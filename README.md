@@ -1,6 +1,6 @@
-# 🚀 RT Report Automation
+# 🚀 rt Report Automation
 
-A microservice to automate the generation and distribution of RT reports.
+A microservice to automate the generation and distribution of rt reports.
 
 ---
 
@@ -10,7 +10,7 @@ A microservice to automate the generation and distribution of RT reports.
 
    ```bash
    git clone https://github.com/rtCamp/rt-report-automation.git
-   cd fast-api-template
+   cd rt-report-automation
    ```
 
 2. **Set up environment variables**:

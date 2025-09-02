@@ -8,8 +8,8 @@ from app.core.logger import LogLevels, configure_logging
 configure_logging(log_level=LogLevels.info)
 
 app = FastAPI(
-	title="RT Report Automation",
-	description="API for RT Report Automation",
+	title="rt Report Automation",
+	description="API for rt Report Automation",
 	version="0.1.0",
 	docs_url="/docs",
 	redoc_url="/redoc",
