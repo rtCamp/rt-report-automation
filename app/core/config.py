@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -18,9 +18,7 @@ class Settings(BaseSettings):
 	ALLOWED_ORIGINS: str = ""
 
 	# Authentication keys
-	AUTH_SECRET_KEY: str = ""
-	AUTH_ALGORITHM: str = "HS256"
-	AUTH_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+	APP_API_KEY: SecretStr = SecretStr("")
 
 	# LLM API Keys
 	GOOGLE_API_KEY: str = ""
@@ -31,6 +29,12 @@ class Settings(BaseSettings):
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
 		return v.split(",") if v else []
+
+	@model_validator(mode="after")
+	def validate_app_api_key(self):
+		if not self.APP_API_KEY.get_secret_value().strip():
+			raise ValueError("APP_API_KEY must be set and cannot be empty")
+		return self
 
 	class Config:
 		env_file = ".env"
