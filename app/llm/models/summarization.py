@@ -61,6 +61,7 @@ class GitHubMetadata(BaseModel):
 	owner_name: str = Field(
 		description="Name of the GitHub repository owner/organization",
 		examples=["rtCamp"],
+		default="rtCamp",
 		min_length=3,
 		max_length=128,
 	)
