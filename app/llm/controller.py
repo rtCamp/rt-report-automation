@@ -8,7 +8,7 @@ router = APIRouter(
 )
 
 
-@router.get(
+@router.post(
 	"/summarize",
 	summary="Summarize Text",
 	description="Run summarization on the provided data by triggering a job.",

@@ -39,14 +39,14 @@ class ProjectMetadata(BaseModel):
 class UserMetadata(BaseModel):
 	user_name: str = Field(
 		description="Name of the user",
-		examples=["annonymous"],
+		examples=["anonymous"],
 		min_length=3,
 		max_length=128,
 	)
 
 	user_email: EmailStr = Field(
 		description="Email of the user",
-		examples=["annonymous@annonymous.com"],
+		examples=["anonymous@anonymous.com"],
 	)
 
 
