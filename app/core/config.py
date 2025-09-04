@@ -10,10 +10,20 @@ class Settings(BaseSettings):
 	Loads settings from environment variables or a .env file.
 	"""
 
+	# API settings
 	API_PREFIX: str = "/api"
 	DEBUG: bool = False
+
+	# CORS settings
 	ALLOWED_ORIGINS: str = ""
+
+	# Authentication keys
 	APP_API_KEY: SecretStr = SecretStr("")
+
+	# LLM API Keys
+	GOOGLE_API_KEY: SecretStr = SecretStr("")
+	OPENAI_API_KEY: SecretStr = SecretStr("")
+	ANTHROPIC_API_KEY: SecretStr = SecretStr("")
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")

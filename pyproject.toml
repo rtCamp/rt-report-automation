@@ -23,6 +23,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.43",
     "asyncpg>=0.30.0",
     "pre-commit>=4.3.0",
+    "langchain>=0.3.27",
 ]
 
 [dependency-groups]
