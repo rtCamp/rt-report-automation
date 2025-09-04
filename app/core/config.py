@@ -7,7 +7,8 @@ class Settings(BaseSettings):
 	"""
 	Application settings.
 
-	Loads settings from environment variables or a .env file.
+	Loads settings from environment variables or a .env file. If not found,
+	default values are used where specified.
 	"""
 
 	# API settings
@@ -18,17 +19,23 @@ class Settings(BaseSettings):
 	ALLOWED_ORIGINS: str = ""
 
 	# Authentication keys
-	APP_API_KEY: SecretStr = SecretStr("")
+	APP_API_KEY: SecretStr
 
 	# LLM API Keys
-	GOOGLE_API_KEY: SecretStr = SecretStr("")
-	OPENAI_API_KEY: SecretStr = SecretStr("")
-	ANTHROPIC_API_KEY: SecretStr = SecretStr("")
+	GOOGLE_API_KEY: SecretStr
+	OPENAI_API_KEY: SecretStr
+	ANTHROPIC_API_KEY: SecretStr
 
 	# Langfuse Configuration
-	LANGFUSE_SECRET_KEY: SecretStr = SecretStr("")
-	LANGFUSE_PUBLIC_KEY: SecretStr = SecretStr("")
+	LANGFUSE_SECRET_KEY: SecretStr
+	LANGFUSE_PUBLIC_KEY: SecretStr
 	LANGFUSE_HOST: HttpUrl = HttpUrl("https://cloud.langfuse.com")
+
+	# Inngest Configuration
+	INNGEST_BASE_URL: HttpUrl
+	INNGEST_DEV: int
+	INNGEST_EVENT_KEY: SecretStr
+	INNGEST_SIGNING_KEY: SecretStr
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
@@ -49,4 +56,6 @@ class Settings(BaseSettings):
 
 # Load environment variables from .env file.
 load_dotenv()
-settings = Settings()
+
+# Pylance: BaseSettings loads from environment variables.
+settings = Settings()  # type: ignore
