@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from pydantic import AnyHttpUrl, SecretStr, field_validator, model_validator
+from pydantic import HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 	# Langfuse Configuration
 	LANGFUSE_SECRET_KEY: SecretStr = SecretStr("")
 	LANGFUSE_PUBLIC_KEY: SecretStr = SecretStr("")
-	LANGFUSE_HOST: AnyHttpUrl = AnyHttpUrl("https://api.langfuse.com")
+	LANGFUSE_HOST: HttpUrl = HttpUrl("https://cloud.langfuse.com")
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
