@@ -77,7 +77,7 @@ class GitHubMetadata(BaseModel):
 class SlackMetadata(BaseModel):
 	channel_slug: str = Field(
 		description="Slack channel slug",
-		examples=["#general"],
+		examples=["ai"],
 		min_length=2,
 		max_length=128,
 	)
