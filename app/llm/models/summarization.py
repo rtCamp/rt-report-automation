@@ -3,6 +3,8 @@ from enum import Enum
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.llm.models import LLMProvider, SupportedModels
+
 
 class ProjectStatus(str, Enum):
 	GREEN = "Green"
@@ -74,27 +76,23 @@ class SlackMetadata(BaseModel):
 
 
 class ModelMetadata(BaseModel):
-	provider: str = Field(
+	provider: LLMProvider = Field(
 		description="LLM Provider",
-		examples=["openai", "google_genai", "anthropic"],
-		min_length=2,
-		max_length=32,
-		default="google_genai",
+		examples=[LLMProvider.GOOGLE_GENAI],
+		default=LLMProvider.GOOGLE_GENAI,
 	)
 
-	model_name: str = Field(
+	model_name: SupportedModels = Field(
 		description="Name of the LLM model",
-		examples=["gpt-4", "gpt-3.5-turbo", "gemini-2.5-flash"],
-		min_length=3,
-		max_length=64,
-		default="gemini-2.5-flash",
+		examples=[SupportedModels.GEMINI_2_5_FLASH],
+		default=SupportedModels.GEMINI_2_5_FLASH,
 	)
 
 	temperature: float = Field(
 		description="Sampling temperature to use, between 0 and 1",
 		ge=0,
 		le=1,
-		examples=[0.0, 0.5, 0.7, 1.0],
+		examples=[0.7],
 		default=0.7,
 	)
 
