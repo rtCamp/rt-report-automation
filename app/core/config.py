@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import AnyHttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -24,6 +24,11 @@ class Settings(BaseSettings):
 	GOOGLE_API_KEY: SecretStr = SecretStr("")
 	OPENAI_API_KEY: SecretStr = SecretStr("")
 	ANTHROPIC_API_KEY: SecretStr = SecretStr("")
+
+	# Langfuse Configuration
+	LANGFUSE_SECRET_KEY: SecretStr = SecretStr("")
+	LANGFUSE_PUBLIC_KEY: SecretStr = SecretStr("")
+	LANGFUSE_HOST: AnyHttpUrl = AnyHttpUrl("https://api.langfuse.com")
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
