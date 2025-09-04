@@ -15,5 +15,5 @@ router = APIRouter(
 	response_model=SummarizeResponse,
 )
 def summarize_text(request: SummarizeRequest):
-	# TODO @yogeshbhutkar: Trigger the summarization job here.
+	# Trigger the summarization job here.
 	pass
