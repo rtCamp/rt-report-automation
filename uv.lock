@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 
 [[package]]
@@ -176,6 +176,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "inngest" },
     { name = "langchain" },
     { name = "langfuse" },
     { name = "pre-commit" },
@@ -197,6 +198,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116.1" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "inngest", specifier = ">=0.5.6" },
     { name = "langchain", specifier = ">=0.3.27" },
     { name = "langfuse", specifier = ">=3.3.4" },
     { name = "pre-commit", specifier = ">=4.3.0" },
@@ -356,6 +358,30 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/66/650a33bd90f786193e4de4b3ad86ea60b53c89b669a5c7be931fac31cdb0/importlib_metadata-8.7.0.tar.gz", hash = "sha256:d13b81ad223b890aa16c5471f2ac3056cf76c5f10f82d6f9292f0b415f389000", size = 56641, upload-time = "2025-04-27T15:29:01.736Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/b0/36bd937216ec521246249be3bf9855081de4c5e06a0c9b4219dbeda50373/importlib_metadata-8.7.0-py3-none-any.whl", hash = "sha256:e5dd1551894c77868a30651cef00984d50e1002d06942a7101d34870c5f02afd", size = 27656, upload-time = "2025-04-27T15:29:00.214Z" },
+]
+
+[[package]]
+name = "inngest"
+version = "0.5.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "jcs" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ed/1e/3eb6c4bda8e14d4c4b7203c5bcafd77542351b15fe6fb8cadd89ba7fcb8d/inngest-0.5.6.tar.gz", hash = "sha256:6fde692d670652e94280aa78c67fdc4c2a0f50eeb8eb1e8cd0af8b28ee7912cd", size = 80439, upload-time = "2025-08-28T15:23:45.976Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/83/bbb50a632a1e5739fdd2705987af03c8530c220c81ad79d0ecdc3b9c7634/inngest-0.5.6-py3-none-any.whl", hash = "sha256:46b111a14fe45ab399a3b4c2a13bb5031e93db1485daa5933c09836576953793", size = 123282, upload-time = "2025-08-28T15:23:43.819Z" },
+]
+
+[[package]]
+name = "jcs"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/e5/9d547f0d42ba00f68eec773aa7b2145e0c0335eb632cbaf519f480a429af/jcs-0.2.1.tar.gz", hash = "sha256:9f20360b2f3b0a410d65493b448f96306d80e37fb46283f3f4aa5db2c7c1472b", size = 6886, upload-time = "2022-04-10T14:41:24.904Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c0/d4/9a99bc15266a842bd14a1913afdb05182888ebab035666c1ce8a64537ca2/jcs-0.2.1-py3-none-any.whl", hash = "sha256:e23a3e1de60f832d33cd811bb9c3b3be79219cdf95f63b88f0972732c3fa8476", size = 7603, upload-time = "2022-04-10T14:41:23.207Z" },
 ]
 
 [[package]]

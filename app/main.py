@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.adapters import setup_inngest
 from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
@@ -23,7 +24,11 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
+# Register API routes.
 register_routes(app)
+
+# Initialize Inngest.
+setup_inngest(app)
 
 if __name__ == "__main__":
 	import uvicorn

@@ -34,3 +34,18 @@ A microservice to automate the generation and distribution of rt reports.
 
    This will start the FastAPI server on `http://localhost:8000`.
    The automatic API docs will be available at `http://localhost:8000/docs`.
+
+---
+
+## 📦 Local Setup for Inngest
+
+Inngest is used for orchestrating workflows. To learn in detail about its dev server, visit [Inngest Dev Server](https://www.inngest.com/docs/dev-server).
+
+Run the following command to start the Inngest dev server:
+
+```bash
+npx inngest-cli@latest dev
+
+# You can specify the URL of your development `serve` API endpoint
+npx inngest-cli@latest dev -u http://localhost:8000/api/inngest --no-discovery
+```
