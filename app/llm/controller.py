@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.llm.models import SummarizeRequest, SummarizeResponse
+
 router = APIRouter(
 	prefix="/llm",
 	tags=["LLM Operations"],
@@ -9,7 +11,9 @@ router = APIRouter(
 @router.get(
 	"/summarize",
 	summary="Summarize Text",
-	description="Summarize the provided text using LLM",
+	description="Run summarization on the provided data by triggering a job.",
+	response_model=SummarizeResponse,
 )
-async def summarize_text(text: str):
+def summarize_text(request: SummarizeRequest):
+	# TODO @yogeshbhutkar: Trigger the summarization job here.
 	pass

@@ -21,9 +21,9 @@ class Settings(BaseSettings):
 	APP_API_KEY: SecretStr = SecretStr("")
 
 	# LLM API Keys
-	GOOGLE_API_KEY: str = ""
-	OPENAI_API_KEY: str = ""
-	ANTHROPIC_API_KEY: str = ""
+	GOOGLE_API_KEY: SecretStr = SecretStr("")
+	OPENAI_API_KEY: SecretStr = SecretStr("")
+	ANTHROPIC_API_KEY: SecretStr = SecretStr("")
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
