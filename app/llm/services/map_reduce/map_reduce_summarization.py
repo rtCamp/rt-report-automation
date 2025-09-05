@@ -186,7 +186,7 @@ class MapReduceSummarizationService:
 		)
 		split_docs = text_splitter.split_documents(self.docs)
 
-		final_summary = ""
+		map_reduce_summary = ""
 		async for step in app.astream(
 			{
 				"contents": [doc.page_content for doc in split_docs],
@@ -197,6 +197,6 @@ class MapReduceSummarizationService:
 			{"recursion_limit": 10},
 		):
 			if "generate_final_summary" in step:
-				final_summary = step["generate_final_summary"]["final_summary"]
+				map_reduce_summary = step["generate_final_summary"]["final_summary"]
 
-		return final_summary
+		return map_reduce_summary
