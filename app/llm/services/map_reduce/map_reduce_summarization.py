@@ -5,7 +5,7 @@ from langchain.chains.combine_documents.reduce import (
 	acollapse_docs,
 	split_list_of_docs,  # type: ignore
 )
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain.output_parsers import PydanticOutputParser
 from langchain.schema import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_text_splitters import CharacterTextSplitter
@@ -13,32 +13,12 @@ from langfuse import observe  # type: ignore
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph  # type: ignore
 
-from app.core.adapters import langfuse
+from app.llm.models.summarization import ProjectSummarySchema
+from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
+from app.llm.prompts.helper import get_langfuse_prompt
 from app.llm.services.map_reduce.states import OverallState, SummaryState
 
 MAX_TOKENS = 10_000
-
-map_prompt = ChatPromptTemplate(
-	messages=[
-		SystemMessagePromptTemplate.from_template(
-			langfuse.get_prompt(
-				"ai-summary-map-template",
-				label="production",
-			).get_langchain_prompt(),
-		),
-	],
-)
-
-reduce_prompt = ChatPromptTemplate(
-	messages=[
-		SystemMessagePromptTemplate.from_template(
-			langfuse.get_prompt(
-				"ai-summary-reduce-template",
-				label="production",
-			).get_langchain_prompt(),
-		),
-	],
-)
 
 
 class MapReduceSummarizationService:
@@ -76,7 +56,12 @@ class MapReduceSummarizationService:
 		state: SummaryState,
 	) -> dict[str, list[str]]:
 		"""Generate summary for the given document."""
-		prompt = map_prompt.invoke(state["content"])  # type: ignore
+		prompt = get_langfuse_prompt(
+			"ai-summary-map-template",
+		).invoke(  # type: ignore
+			{"context": state["content"]},
+		)
+
 		response = self.llm.invoke(prompt.to_string())
 		summary = response.content  # type: ignore
 		return {
@@ -111,7 +96,13 @@ class MapReduceSummarizationService:
 		"""Reduce the summaries to a final summary."""
 		combined_summaries = "\n\n".join(doc.page_content for doc in docs)
 		prompt_input = {"docs": combined_summaries}
-		prompt = reduce_prompt.invoke({"docs": prompt_input})  # type: ignore
+
+		prompt = get_langfuse_prompt(  # type: ignore
+			"ai-summary-reduce-template",
+		).invoke(
+			{"docs": prompt_input},
+		)
+
 		response = await self.llm.ainvoke(prompt.to_string())
 		summary = response.content  # type: ignore
 		if isinstance(summary, (dict | list)):
@@ -147,8 +138,24 @@ class MapReduceSummarizationService:
 		state: OverallState,
 	):
 		"""Generate the final summary for the given state."""
-		response = await self._reduce(state["collapsed_summaries"])
-		return {"final_summary": response}
+		combined_summaries = "\n\n".join(
+			doc.page_content for doc in state["collapsed_summaries"]
+		)
+		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
+
+		prompt = get_langfuse_prompt(  # type: ignore
+			"ai-summary-poc",
+		).invoke(
+			{
+				"context": combined_summaries,
+				"format": pydantic_parser.get_format_instructions(),
+				"format_instructions": FORMAT_INSTRUCTIONS,
+			},
+		)
+
+		response = await self.llm.ainvoke(prompt.to_string())
+		parsed_summary = pydantic_parser.parse(response.content)  # type: ignore
+		return {"final_summary": parsed_summary.model_dump_json()}
 
 	async def summarize(self):
 		"""Summarize the given contents."""
