@@ -5,7 +5,9 @@ from langchain_core.documents import Document
 from langchain_core.language_models import BaseLanguageModel
 from langfuse import observe
 
+from app.core.adapters.langfuse import langfuse
 from app.llm.models.summarization import ProjectSummarySchema
+from app.llm.prompts.prompt import FORMAT
 
 
 class StuffService:
@@ -14,8 +16,8 @@ class StuffService:
 	def __init__(
 		self,
 		llm: BaseLanguageModel,
-		prompt: PromptTemplate,
 		docs: list[Document],
+		prompt_slug: str = "ai-summary-poc",
 	):
 		"""
 		Initialize the StuffService.
@@ -26,28 +28,33 @@ class StuffService:
 			docs: List of documents to summarize
 		"""
 		self.llm = llm
-		self.prompt = prompt
 		self.docs = docs
+		self.prompt_slug = prompt_slug
 
 	@observe()
-	async def summarize(self) -> ProjectSummarySchema:
+	async def summarize(self) -> str:
 		"""
 		Summarize documents using LangChain's stuff documents chain.
 
 		Returns:
-			ProjectSummarySchema containing the summarized project data
+			str: JSON string containing the summarized project data
 		"""
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
+
+		langfuse_prompt = langfuse.get_prompt(self.prompt_slug)
+		prompt = PromptTemplate.from_template(langfuse_prompt.compile(format=FORMAT))
 
 		chain = create_stuff_documents_chain(
 			llm=self.llm,
 			output_parser=pydantic_parser,
-			prompt=self.prompt,
+			prompt=prompt,
 		)
 
-		return await chain.ainvoke(
+		result = await chain.ainvoke(
 			{
 				"context": self.docs,
 				"format_instructions": pydantic_parser.get_format_instructions(),
 			},
 		)
+
+		return result.model_dump_json()
