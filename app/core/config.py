@@ -37,6 +37,9 @@ class Settings(BaseSettings):
 	INNGEST_EVENT_KEY: SecretStr
 	INNGEST_SIGNING_KEY: SecretStr
 
+	# Slack Configuration
+	SLACK_BOT_TOKEN: SecretStr
+
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
