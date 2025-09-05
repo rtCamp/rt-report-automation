@@ -55,7 +55,4 @@ class StuffService:
 			},
 		)
 
-		if isinstance(result, ProjectSummarySchema):
-			return result.model_dump_json()
-
-		return str(result)
+		return result.model_dump_json()
