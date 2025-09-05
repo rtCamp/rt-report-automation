@@ -5,16 +5,16 @@ from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
 from app.llm.models.summarization import ModelMetadata
-from app.llm.services.map_reduce.map_reduce_summarization import (
-	MapReduceSummarizationService,
-)
+from app.llm.services import MapReduceSummarizationService, StuffService
+
+MAX_ALLOWED_TOKENS = 100_000
 
 
 @inngest_client.create_function(
-	fn_id="map_reduce_summarization",
-	trigger=inngest.TriggerEvent(event="rt-report-automation/map_reduce_summarization"),
+	fn_id="summarization",
+	trigger=inngest.TriggerEvent(event="rt-report-automation/summarization"),
 )
-async def map_reduce_summarization(ctx: inngest.Context) -> str:
+async def summarization(ctx: inngest.Context) -> str:
 	"""Inngest function to perform map-reduce style summarization.
 
 	Args:
@@ -65,6 +65,13 @@ async def map_reduce_summarization(ctx: inngest.Context) -> str:
 		documents: list[Document] = [
 			Document(page_content=str(content)) for content in docs_data
 		]
+
+		total_tokens = sum(llm.get_num_tokens(doc.page_content) for doc in documents)
+
+		if total_tokens < MAX_ALLOWED_TOKENS:
+			stuff_summarization_service = StuffService(llm=llm, docs=documents)
+			return await stuff_summarization_service.summarize()
+
 		map_reduce_service = MapReduceSummarizationService(llm=llm, docs=documents)
 		return await map_reduce_service.summarize()
 

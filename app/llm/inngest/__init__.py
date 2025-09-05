@@ -1,3 +1,3 @@
-from app.llm.inngest.map_reduce import map_reduce_summarization
+from app.llm.inngest.summarization import summarization
 
-__all__ = ["map_reduce_summarization"]
+__all__ = ["summarization"]
