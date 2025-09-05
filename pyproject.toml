@@ -56,3 +56,7 @@ extend-select = [
 	"FBT",      # detect boolean traps
 	"N",        # enforce naming conventions, e.g. ClassName vs function_name
 ]
+
+[tool.pyright]
+reportUnknownMemberType = "none"
+reportMissingTypeStubs = "none"

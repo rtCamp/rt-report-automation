@@ -3,15 +3,15 @@ from typing import Any, Literal
 
 from langchain.chains.combine_documents.reduce import (
 	acollapse_docs,
-	split_list_of_docs,  # type: ignore
+	split_list_of_docs,
 )
 from langchain.output_parsers import PydanticOutputParser
 from langchain.schema import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_text_splitters import CharacterTextSplitter
-from langfuse import observe  # type: ignore
+from langfuse import observe
 from langgraph.constants import Send
-from langgraph.graph import END, START, StateGraph  # type: ignore
+from langgraph.graph import END, START, StateGraph
 
 from app.llm.models.summarization import ProjectSummarySchema
 from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
@@ -58,12 +58,12 @@ class MapReduceSummarizationService:
 		"""Generate summary for the given document."""
 		prompt = get_langfuse_prompt(
 			"ai-summary-map-template",
-		).invoke(  # type: ignore
+		).invoke(
 			{"context": state["content"]},
 		)
 
 		response = self.llm.invoke(prompt.to_string())
-		summary = response.content  # type: ignore
+		summary = response.content
 		return {
 			"summaries": [
 				json.dumps(summary)
@@ -97,14 +97,14 @@ class MapReduceSummarizationService:
 		combined_summaries = "\n\n".join(doc.page_content for doc in docs)
 		prompt_input = {"docs": combined_summaries}
 
-		prompt = get_langfuse_prompt(  # type: ignore
+		prompt = get_langfuse_prompt(
 			"ai-summary-reduce-template",
 		).invoke(
 			{"docs": prompt_input},
 		)
 
 		response = await self.llm.ainvoke(prompt.to_string())
-		summary = response.content  # type: ignore
+		summary = response.content
 		if isinstance(summary, (dict | list)):
 			return json.dumps(summary)
 		return str(summary)
@@ -143,7 +143,7 @@ class MapReduceSummarizationService:
 		)
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
 
-		prompt = get_langfuse_prompt(  # type: ignore
+		prompt = get_langfuse_prompt(
 			"ai-summary-poc",
 		).invoke(
 			{
@@ -154,7 +154,11 @@ class MapReduceSummarizationService:
 		)
 
 		response = await self.llm.ainvoke(prompt.to_string())
-		parsed_summary = pydantic_parser.parse(response.content)  # type: ignore
+
+		if not isinstance(response.content, str):
+			return {"final_summary": "Error: Unable to parse summary."}
+
+		parsed_summary = pydantic_parser.parse(response.content)
 		return {"final_summary": parsed_summary.model_dump_json()}
 
 	async def summarize(self):
@@ -162,10 +166,10 @@ class MapReduceSummarizationService:
 
 		# Nodes:
 		graph = StateGraph(OverallState)
-		graph.add_node("generate_summary", self.generate_summary)  # type: ignore
-		graph.add_node("collect_summaries", self.collect_summaries)  # type: ignore
-		graph.add_node("collapse_summaries", self.collapse_summaries)  # type: ignore
-		graph.add_node("generate_final_summary", self.generate_final_summary)  # type: ignore
+		graph.add_node("generate_summary", self.generate_summary)
+		graph.add_node("collect_summaries", self.collect_summaries)
+		graph.add_node("collapse_summaries", self.collapse_summaries)
+		graph.add_node("generate_final_summary", self.generate_final_summary)
 
 		# Edges:
 		graph.add_conditional_edges(START, self.map_summaries, ["generate_summary"])
@@ -174,7 +178,7 @@ class MapReduceSummarizationService:
 		graph.add_conditional_edges("collapse_summaries", self.should_collapse)
 		graph.add_edge("generate_final_summary", END)
 
-		app = graph.compile()  # type: ignore
+		app = graph.compile()
 
 		text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
 			chunk_size=MAX_TOKENS,
@@ -183,7 +187,7 @@ class MapReduceSummarizationService:
 		split_docs = text_splitter.split_documents(self.docs)
 
 		final_summary = ""
-		async for step in app.astream(  # type: ignore
+		async for step in app.astream(
 			{
 				"contents": [doc.page_content for doc in split_docs],
 				"summaries": [],
