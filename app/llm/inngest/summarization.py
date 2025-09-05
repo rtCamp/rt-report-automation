@@ -66,9 +66,15 @@ async def summarization(ctx: inngest.Context) -> str:
 			Document(page_content=str(content)) for content in docs_data
 		]
 
-		total_tokens = sum(llm.get_num_tokens(doc.page_content) for doc in documents)
+		total_tokens = 0
+		token_limit_exceeded = False
+		for doc in documents:
+			total_tokens += llm.get_num_tokens(doc.page_content)
+			if total_tokens > MAX_ALLOWED_TOKENS:
+				token_limit_exceeded = True
+				break
 
-		if total_tokens < MAX_ALLOWED_TOKENS:
+		if not token_limit_exceeded:
 			stuff_summarization_service = StuffService(llm=llm, docs=documents)
 			return await stuff_summarization_service.summarize()
 
