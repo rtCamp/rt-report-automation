@@ -4,14 +4,14 @@ import httpx
 import jwt
 from fastapi import HTTPException
 
-from app.core.config import Settings
+from app.core.config import settings
 
 
 class GitHubAuthService:
 	"""Service for generating GitHub App JWT and installation access tokens."""
 
-	def __init__(self, settings: Settings | None = None):
-		self.settings = settings or Settings()
+	def __init__(self, settings=settings):
+		self.settings = settings
 		self._signing_key: bytes | None = None
 
 	@property
