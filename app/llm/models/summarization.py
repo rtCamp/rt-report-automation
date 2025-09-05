@@ -118,3 +118,19 @@ class SummarizeResponse(BaseModel):
 		description="Unique identifier for the summarization run",
 		examples=["123e4567-e89b-12d3-a456"],
 	)
+
+
+class TaskDetails(BaseModel):
+	"""Task details schema."""
+
+	completed: str
+	in_progress: str = Field(alias="inProgress")
+	in_review: str = Field(alias="inReview")
+
+
+class ProjectSummarySchema(BaseModel):
+	"""Project summary schema."""
+
+	summary: str
+	risk_blocker_action_needed: str = Field(alias="riskBlockerActionNeeded")
+	task_details: TaskDetails = Field(alias="taskDetails")

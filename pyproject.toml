@@ -14,12 +14,14 @@ dependencies = [
     "uvicorn>=0.35.0",
     "python-multipart>=0.0.20",
     "pre-commit>=4.3.0",
-    "langchain>=0.3.27",
+    "langchain[anthropic,openai]>=0.3.27",
     "langfuse>=3.3.4",
     "inngest>=0.5.6",
     "redis>=6.4.0",
     "pyjwt>=2.10.1",
     "cryptography>=45.0.7",
+    "langgraph>=0.6.6",
+    "langchain-google-genai>=2.1.10",
 ]
 
 [dependency-groups]
@@ -35,7 +37,7 @@ exclude = [".venv", "migrations"]
 indent-style = "tab"
 
 [tool.ruff.lint]
-ignore = ["W191"]
+ignore = ["W191", "UP038"]
 extend-select = [
     "F",        # Pyflakes rules
     "W",        # PyCodeStyle warnings
@@ -57,3 +59,7 @@ extend-select = [
 	"FBT",      # detect boolean traps
 	"N",        # enforce naming conventions, e.g. ClassName vs function_name
 ]
+
+[tool.pyright]
+reportUnknownMemberType = "none"
+reportMissingTypeStubs = "none"
