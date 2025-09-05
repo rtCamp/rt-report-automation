@@ -17,6 +17,7 @@ class StuffService:
 		self,
 		llm: BaseLanguageModel,
 		docs: list[Document],
+		prompt_slug: str = "ai-summary-poc",
 	):
 		"""
 		Initialize the StuffService.
@@ -28,6 +29,7 @@ class StuffService:
 		"""
 		self.llm = llm
 		self.docs = docs
+		self.prompt_slug = prompt_slug
 
 	@observe()
 	async def summarize(self) -> str:
@@ -39,7 +41,7 @@ class StuffService:
 		"""
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
 
-		langfuse_prompt = langfuse.get_prompt("ai-summary-poc")
+		langfuse_prompt = langfuse.get_prompt(self.prompt_slug)
 		prompt = PromptTemplate.from_template(langfuse_prompt.compile(format=FORMAT))
 
 		chain = create_stuff_documents_chain(
