@@ -88,5 +88,5 @@ async def summarization(ctx: inngest.Context) -> str:
 		ctx.logger.error(f"Missing required field in event data: {e}")
 		raise ValueError(f"Missing required field: {e}")
 	except Exception as e:
-		ctx.logger.error(f"Error in map_reduce_summarization: {e}")
+		ctx.logger.error(f"Error in summarization: {e}")
 		raise
