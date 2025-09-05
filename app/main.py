@@ -5,6 +5,7 @@ from app.core.adapters import setup_inngest
 from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
+from app.llm.inngest import map_reduce_summarization
 
 configure_logging(log_level=LogLevels.info)
 
@@ -28,7 +29,7 @@ app.add_middleware(
 register_routes(app)
 
 # Initialize Inngest.
-setup_inngest(app)
+setup_inngest(app, [map_reduce_summarization])
 
 if __name__ == "__main__":
 	import uvicorn

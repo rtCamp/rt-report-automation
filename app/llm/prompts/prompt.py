@@ -8,5 +8,4 @@ FORMAT = """
         "inReview": "Format as: Main Issue Title: Brief description of work under review.\\n\\t Pull request or deliverable under review\\n\\t Code review or approval process\\n\\t Documentation or design review status\\n\\nLimit to 4–5 main issue titles total, each with 2–4 bullet points. If there are no explicit in-review tasks, state 'Nothing is in review.'\\n\\nExample format:\\nCode Review: Backend improvements under review\\n\\t PR #123 awaiting senior developer review\\n\\t Security audit documentation pending approval\\n\\t Performance optimization changes being tested"
     }}
 }}
-"""  # noqa: E501
-# The above format is a JSON schema that defines the expected structure of the output.
+"""  # noqa: E501 -- JSON schema that defines the expected structure of the output.

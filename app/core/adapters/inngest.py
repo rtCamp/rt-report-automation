@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import inngest
 import inngest.fast_api
@@ -10,7 +11,7 @@ inngest_client = inngest.Inngest(
 )
 
 
-def setup_inngest(app: FastAPI):
+def setup_inngest(app: FastAPI, functions: list[Any] = []):
 	"""Setup Inngest with the FastAPI application.
 
 	Args:
@@ -19,4 +20,4 @@ def setup_inngest(app: FastAPI):
 	Returns:
 		None
 	"""
-	inngest.fast_api.serve(app, inngest_client, [])
+	inngest.fast_api.serve(app, inngest_client, functions)
