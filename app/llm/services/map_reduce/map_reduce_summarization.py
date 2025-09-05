@@ -95,12 +95,11 @@ class MapReduceSummarizationService:
 	) -> str:
 		"""Reduce the summaries to a final summary."""
 		combined_summaries = "\n\n".join(doc.page_content for doc in docs)
-		prompt_input = {"docs": combined_summaries}
 
 		prompt = get_langfuse_prompt(
 			"ai-summary-reduce-template",
 		).invoke(
-			{"docs": prompt_input},
+			{"docs": combined_summaries},
 		)
 
 		response = await self.llm.ainvoke(prompt.to_string())

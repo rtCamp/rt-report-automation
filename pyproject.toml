@@ -34,7 +34,7 @@ exclude = [".venv", "migrations"]
 indent-style = "tab"
 
 [tool.ruff.lint]
-ignore = ["W191"]
+ignore = ["W191", "UP038"]
 extend-select = [
     "F",        # Pyflakes rules
     "W",        # PyCodeStyle warnings

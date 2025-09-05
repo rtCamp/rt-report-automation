@@ -37,9 +37,9 @@ async def map_reduce_summarization(ctx: inngest.Context) -> str:
 		docs_data = event_data.get("data", [])
 
 		# Validate llm_model_data is a dict.
-		if not isinstance(llm_model_data, dict | None):
+		if not isinstance(llm_model_data, (dict, type(None))):
 			raise TypeError(
-				f"Expected dict, got {type(llm_model_data).__name__}",
+				f"Expected dict or None, got {type(llm_model_data).__name__}",
 			)
 
 		# Validate docs_data is a list.
