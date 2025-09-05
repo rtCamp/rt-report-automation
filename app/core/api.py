@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.core.config import settings
-from app.gh import gh_router
+from app.github import gh_router
 from app.health.controller import router as health_router
 from app.llm import llm_router
 

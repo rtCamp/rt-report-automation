@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.gh.service import GitHubAuthService
+from app.github.service import GitHubAuthService
 
 router = APIRouter(
 	prefix="/gh",
