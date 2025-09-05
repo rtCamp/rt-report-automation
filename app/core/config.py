@@ -37,6 +37,15 @@ class Settings(BaseSettings):
 	INNGEST_EVENT_KEY: SecretStr
 	INNGEST_SIGNING_KEY: SecretStr
 
+	# GitHub App Configuration
+	GITHUB_APP_PRIVATE_KEY: SecretStr
+	GITHUB_CLIENT_ID: SecretStr
+	GITHUB_INSTALLATION_ID: SecretStr
+	GITHUB_REFRESH_TOKEN_TTL: int = 600
+
+	LANGFUSE_BASE_URL: HttpUrl = HttpUrl("https://cloud.langfuse.com")
+	REDIS_PASSWORD: SecretStr | None = None
+
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
