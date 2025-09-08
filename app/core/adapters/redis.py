@@ -2,7 +2,7 @@ from redis import Redis
 from redis.exceptions import AuthenticationError, ConnectionError
 
 from app.core.config import settings
-from app.utils.custom_errors import InternalServerError
+from app.core.exceptions import InternalServerError
 
 
 def get_redis_client() -> Redis:

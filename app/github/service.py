@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
-from app.utils.custom_errors import InternalServerError
+from app.core.exceptions import InternalServerError
 
 
 class GitHubAuthService:
