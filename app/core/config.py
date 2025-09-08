@@ -37,6 +37,18 @@ class Settings(BaseSettings):
 	INNGEST_EVENT_KEY: SecretStr
 	INNGEST_SIGNING_KEY: SecretStr
 
+	# GitHub App Configuration
+	GITHUB_APP_PRIVATE_KEY: SecretStr
+	GITHUB_CLIENT_ID: SecretStr
+	GITHUB_INSTALLATION_ID: SecretStr
+	GITHUB_APP_SIGNED_JWT_TTL: int = 600
+	GITHUB_API_GQL_ENDPOINT: HttpUrl = HttpUrl("https://api.github.com/graphql")
+
+	# Redis Configuration
+	REDIS_PASSWORD: SecretStr
+	REDIS_HOST: str = "redis"
+	REDIS_PORT: int = 6379
+
 	# Slack Configuration
 	SLACK_BOT_TOKEN: SecretStr
 
