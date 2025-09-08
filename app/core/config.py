@@ -46,7 +46,8 @@ class Settings(BaseSettings):
 
 	# Redis Configuration
 	REDIS_PASSWORD: SecretStr
-	REDIS_CLIENT_HOST: str = "redis"
+	REDIS_HOST: str = "redis"
+	REDIS_PORT: int = 6379
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")

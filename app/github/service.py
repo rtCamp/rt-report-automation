@@ -1,10 +1,12 @@
 import time
+from datetime import UTC, datetime
 
 import httpx
 import jwt
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.redis import redis_client
 from app.utils.custom_errors import InternalServerError
 
 
@@ -36,15 +38,18 @@ class GitHubAuthService:
 			}
 
 			return jwt.encode(payload, self.signing_key, algorithm="RS256")
+
 		except Exception as error:
 			raise InternalServerError(
 				error,
 				"Failed to generate JWT",
-				"Check the private key and client ID env.",
 			)
 
 	async def get_access_token(self) -> dict:
 		"""Exchange JWT for a GitHub App installation access token."""
+		if redis_client.exists("github_access_token"):
+			return {"token": redis_client.get("github_access_token")}
+
 		jwt_token = self.generate_installation_token()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
@@ -63,5 +68,24 @@ class GitHubAuthService:
 				status_code=response.status_code,
 				detail=f"Failed to get installation token: {response.text}",
 			)
+		access_token_value = response.json().get("token")
+		access_token_expiry = response.json().get("expires_at")
+		if access_token_value and access_token_expiry:
+			# Convert the ISO 8601 expiry string to a datetime object
+			expiry_dt = datetime.fromisoformat(
+				access_token_expiry.replace("Z", "+00:00"),
+			)
 
-		return response.json()
+			# Calculate TTL in seconds, subtract 60s buffer
+			ttl_seconds = int(
+				(expiry_dt - datetime.now(UTC)).total_seconds() - 60,
+			)
+
+			# Cache the token in Redis
+			redis_client.setex(
+				"github_access_token",
+				ttl_seconds,
+				access_token_value,
+			)
+
+		return {"token": access_token_value}
