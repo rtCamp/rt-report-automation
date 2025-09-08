@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 from slack_sdk import WebClient
 
+from app.core.config import settings
+
 
 class SlackService:
 	"""Service for interacting with Slack API."""
@@ -12,8 +14,6 @@ class SlackService:
 
 	def __init__(self):
 		"""Initialize the SlackService."""
-
-		from app.core.config import settings
 
 		self.client = WebClient(token=settings.SLACK_BOT_TOKEN.get_secret_value())
 		self.logger = logging.getLogger(__name__)
@@ -30,13 +30,15 @@ class SlackService:
 
 		try:
 			response = self.client.users_conversations()
-			if response["ok"]:
-				channels = response.get("channels", [])
-				for channel in channels:
-					if channel["name"] == channel_name:
-						return channel["id"]
-			else:
+
+			if not response["ok"]:
 				self.logger.error(f"Error fetching channels: {response['error']}")
+				return None
+
+			channels = response.get("channels", [])
+			for channel in channels:
+				if channel["name"] == channel_name:
+					return channel["id"]
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching channels: {e}")
 		return None
