@@ -5,8 +5,8 @@ import httpx
 import jwt
 from fastapi import HTTPException
 
+from app.core.adapters.redis import redis_client
 from app.core.config import settings
-from app.core.redis import redis_client
 from app.utils.custom_errors import InternalServerError
 
 
@@ -25,11 +25,11 @@ class GitHubAuthService:
 
 		return self._signing_key
 
-	def generate_installation_token(self) -> str:
+	def generate_app_signed_jwt(self) -> str:
 		"""Generate a JWT for GitHub App authentication."""
 		try:
 			current_time = int(time.time())
-			expiration = settings.GITHUB_INSTALLATION_TOKEN_TTL
+			expiration = settings.GITHUB_APP_SIGNED_JWT_TTL
 
 			payload = {
 				"iat": current_time,
@@ -47,10 +47,11 @@ class GitHubAuthService:
 
 	async def get_access_token(self) -> dict:
 		"""Exchange JWT for a GitHub App installation access token."""
-		if redis_client.exists("github_access_token"):
-			return {"token": redis_client.get("github_access_token")}
+		cached_token = redis_client.get("github_access_token")
+		if cached_token is not None:
+			return {"token": cached_token}
 
-		jwt_token = self.generate_installation_token()
+		jwt_token = self.generate_app_signed_jwt()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
 			f"https://api.github.com/app/installations/{installation_id}/access_tokens"

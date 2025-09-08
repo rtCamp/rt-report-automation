@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 	GITHUB_APP_PRIVATE_KEY: SecretStr
 	GITHUB_CLIENT_ID: SecretStr
 	GITHUB_INSTALLATION_ID: SecretStr
-	GITHUB_INSTALLATION_TOKEN_TTL: int = 600
+	GITHUB_APP_SIGNED_JWT_TTL: int = 600
 	GITHUB_API_GQL_ENDPOINT: HttpUrl = HttpUrl("https://api.github.com/graphql")
 
 	# Redis Configuration
