@@ -49,15 +49,22 @@ class Settings(BaseSettings):
 	REDIS_HOST: str = "redis"
 	REDIS_PORT: int = 6379
 
+	# Slack Configuration
+	SLACK_BOT_TOKEN: SecretStr
+
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
 		return v.split(",") if v else []
 
 	@model_validator(mode="after")
-	def validate_app_api_key(self):
+	def validate_required_secrets(self):
 		if not self.APP_API_KEY.get_secret_value().strip():
 			raise ValueError("APP_API_KEY must be set and cannot be empty")
+
+		if not self.SLACK_BOT_TOKEN.get_secret_value().strip():
+			raise ValueError("SLACK_BOT_TOKEN must be set and cannot be empty")
+
 		return self
 
 	class Config:
