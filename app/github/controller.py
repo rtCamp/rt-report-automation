@@ -8,6 +8,8 @@ router = APIRouter(
 )
 
 
+# This api route is just for demonstration and testing purposes.
+# Note: Once the service is ready remove this endpoint for enhancing the security.
 @router.get(
 	"/access_token",
 	summary="Access Token",

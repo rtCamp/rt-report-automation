@@ -41,10 +41,12 @@ class Settings(BaseSettings):
 	GITHUB_APP_PRIVATE_KEY: SecretStr
 	GITHUB_CLIENT_ID: SecretStr
 	GITHUB_INSTALLATION_ID: SecretStr
-	GITHUB_REFRESH_TOKEN_TTL: int = 600
+	GITHUB_INSTALLATION_TOKEN_TTL: int = 600
+	GITHUB_API_GQL_ENDPOINT: HttpUrl = HttpUrl("https://api.github.com/graphql")
 
-	LANGFUSE_BASE_URL: HttpUrl = HttpUrl("https://cloud.langfuse.com")
-	REDIS_PASSWORD: SecretStr | None = None
+	# Redis Configuration
+	REDIS_PASSWORD: SecretStr
+	REDIS_CLIENT_HOST: str = "redis"
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
