@@ -69,8 +69,11 @@ class GitHubAuthService:
 				status_code=response.status_code,
 				detail=f"Failed to get installation token: {response.text}",
 			)
-		access_token_value = response.json().get("token")
-		access_token_expiry = response.json().get("expires_at")
+
+		response_data = response.json()
+		access_token_value = response_data.get("token")
+		access_token_expiry = response_data.get("expires_at")
+
 		if access_token_value and access_token_expiry:
 			# Convert the ISO 8601 expiry string to a datetime object
 			expiry_dt = datetime.fromisoformat(
@@ -83,7 +86,7 @@ class GitHubAuthService:
 			)
 
 			# Cache the token in Redis
-			redis_client.setex(
+			redis_client.set(
 				"github_access_token",
 				ttl_seconds,
 				access_token_value,
