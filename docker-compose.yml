@@ -27,13 +27,13 @@ services:
             --tcp-keepalive 300
             --timeout 0
             --tcp-backlog 511
-            --bind 0.0.0.0
+            --bind 127.0.0.1
             --protected-mode yes
             --port 6379
 
         # Port mapping (restricted to localhost)
         ports:
-            - '6379:6379'
+            - '127.0.0.1:6379:6379'
 
         # Health check (with auth)
         healthcheck:
