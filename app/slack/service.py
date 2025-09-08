@@ -10,6 +10,8 @@ from app.core.config import settings
 class SlackService:
 	"""Service for interacting with Slack API."""
 
+	# TODO(sainathpoojary): https://github.com/rtCamp/rt-report-automation/issues/11
+	# After standarizing the workflow name, update it here.
 	STANDUP_WORKFLOW_NAME = "AI Internal - Daily Tasks Tracker"
 
 	def __init__(self):
