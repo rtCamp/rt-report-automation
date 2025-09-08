@@ -38,9 +38,11 @@ class SlackService:
 				return None
 
 			channels = response.get("channels", [])
+
 			for channel in channels:
 				if channel["name"] == channel_name:
 					return channel["id"]
+
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching channels: {e}")
 		return None
@@ -73,14 +75,17 @@ class SlackService:
 					limit=1000,
 					cursor=cursor,
 				)
+
 				if response["ok"]:
 					messages.extend(response.get("messages", []))
 					cursor = response.get("response_metadata", {}).get("next_cursor")
+
 					if not cursor:
 						break
 				else:
 					self.logger.error(f"Error fetching messages: {response['error']}")
 					break
+
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching messages: {e}")
 		return messages
@@ -108,6 +113,7 @@ class SlackService:
 				and message["username"] == workflow_name
 			):
 				filtered_messages.append(message)
+
 		return filtered_messages
 
 	def _get_thread_messages(self, channel_id: str, thread_ts: str) -> list[dict]:
@@ -131,9 +137,11 @@ class SlackService:
 					limit=1000,
 					cursor=cursor,
 				)
+
 				if response["ok"]:
 					messages.extend(response.get("messages", []))
 					cursor = response.get("response_metadata", {}).get("next_cursor")
+
 					if not cursor:
 						break
 				else:
@@ -141,6 +149,7 @@ class SlackService:
 						f"Error fetching thread messages: {response['error']}",
 					)
 					break
+
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching thread messages: {e}")
 		return messages
@@ -157,6 +166,7 @@ class SlackService:
 		"""
 		try:
 			standup_text = message.get("text", "")
+
 			if not standup_text:
 				self.logger.warning("Empty standup message text")
 				return {
@@ -255,8 +265,10 @@ class SlackService:
 			list[dict]: A list of parsed standup data.
 		"""
 		parsed_standups = []
+
 		for message in messages:
 			parsed = self._parse_standup_message(message)
+
 			if parsed is not None:
 				parsed_standups.append(parsed)
 		return parsed_standups
@@ -281,6 +293,7 @@ class SlackService:
 		"""
 		standups = {}
 		channel_id = self._get_channel_id(channel_name)
+
 		if not channel_id:
 			self.logger.warning(f"Channel not found: {channel_name}")
 			return standups
