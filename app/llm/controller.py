@@ -19,8 +19,6 @@ router = APIRouter(
 	response_model=SummarizeResponse,
 )
 async def summarize_text(request: SummarizeRequest):
-	ids = []
-
 	try:
 		ids = await inngest_client.send(
 			inngest.Event(
