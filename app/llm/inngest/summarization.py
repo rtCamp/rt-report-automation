@@ -1,3 +1,5 @@
+import datetime
+
 import inngest
 from langchain.chat_models import init_chat_model
 from langchain.schema import Document
@@ -7,12 +9,20 @@ from app.core.adapters import inngest_client
 from app.llm.models.summarization import ModelMetadata
 from app.llm.services import MapReduceSummarizationService, StuffService
 
+# Maximum allowed tokens for direct summarization without map-reduce.
 MAX_ALLOWED_TOKENS = 100_000
+
+# Lower bound for API rate limiting (RPM) for third-party LLM providers.
+MIN_PROVIDER_API_RATE_LIMIT = 500
 
 
 @inngest_client.create_function(
 	fn_id="summarization",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/summarization"),
+	throttle=inngest.Throttle(
+		limit=MIN_PROVIDER_API_RATE_LIMIT,
+		period=datetime.timedelta(minutes=1),
+	),
 )
 async def summarization(ctx: inngest.Context) -> str:
 	"""Inngest function to perform map-reduce style summarization.
