@@ -114,9 +114,9 @@ class SummarizeRequest(BaseModel):
 
 
 class SummarizeResponse(BaseModel):
-	run_id: str = Field(
+	run_ids: list[str] = Field(
 		description="Unique identifier for the summarization run",
-		examples=["123e4567-e89b-12d3-a456"],
+		examples=[["123e4567-e89b-12d3-a456"]],
 	)
 
 
