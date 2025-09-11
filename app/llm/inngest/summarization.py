@@ -67,7 +67,7 @@ async def summarization(ctx: inngest.Context) -> str:
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 		llm = init_chat_model(
-			llm_model_overrides.model_name.value,
+			llm_model_overrides.model.value,
 			model_provider=llm_model_overrides.provider.value,
 			temperature=llm_model_overrides.temperature,
 		)
@@ -88,7 +88,14 @@ async def summarization(ctx: inngest.Context) -> str:
 			stuff_summarization_service = StuffService(llm=llm, docs=documents)
 			return await stuff_summarization_service.summarize()
 
-		map_reduce_service = MapReduceSummarizationService(llm=llm, docs=documents)
+		map_reduce_service = MapReduceSummarizationService(
+			llm=llm,
+			docs=documents,
+			max_tokens=int(
+				# Use 60% of the context window to account for prompt/output overhead.
+				llm_model_overrides.model.get_context_size() * 0.6,
+			),
+		)
 		return await map_reduce_service.summarize()
 
 	except ValidationError as e:

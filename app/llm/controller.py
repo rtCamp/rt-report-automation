@@ -4,12 +4,34 @@ from fastapi.logger import logger
 
 from app.core.adapters import inngest_client
 from app.core.exceptions import InternalServerError
-from app.llm.models import SummarizeRequest, SummarizeResponse
+from app.llm.models import (
+	ModelResponse,
+	SummarizeRequest,
+	SummarizeResponse,
+	SupportedModels,
+)
 
 router = APIRouter(
 	prefix="/llm",
 	tags=["LLM Operations"],
 )
+
+
+@router.get(
+	"/models",
+	summary="List Supported Models",
+	description="Retrieve a list of supported LLM models along with their details.",
+	response_model=list[ModelResponse],
+)
+def list_supported_models():
+	return [
+		ModelResponse(
+			name=model.value,
+			context_window=model.get_context_size(),
+			max_output_tokens=model.get_max_output_tokens(),
+		)
+		for model in SupportedModels
+	]
 
 
 @router.post(

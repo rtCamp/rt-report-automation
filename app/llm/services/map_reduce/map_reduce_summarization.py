@@ -8,7 +8,6 @@ from langchain.chains.combine_documents.reduce import (
 from langchain.output_parsers import PydanticOutputParser
 from langchain.schema import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_text_splitters import CharacterTextSplitter
 from langfuse import observe
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
@@ -18,8 +17,6 @@ from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
 from app.llm.prompts.helper import get_langfuse_prompt
 from app.llm.services.map_reduce.states import OverallState, SummaryState
 
-MAX_TOKENS = 10_000
-
 
 class MapReduceSummarizationService:
 	"""Map-reduce style summarization service."""
@@ -28,7 +25,7 @@ class MapReduceSummarizationService:
 		self,
 		llm: BaseChatModel,
 		docs: list[Document],
-		max_tokens: int = MAX_TOKENS,
+		max_tokens: int,
 	) -> None:
 		"""Initialize the service."""
 		self.llm = llm
@@ -113,7 +110,7 @@ class MapReduceSummarizationService:
 		doc_lists = split_list_of_docs(
 			state["collapsed_summaries"],
 			self.length_function,
-			MAX_TOKENS,
+			self.max_tokens,
 		)
 		results: list[Document] = []
 		for doc_list in doc_lists:
@@ -127,7 +124,7 @@ class MapReduceSummarizationService:
 	) -> Literal["collapse_summaries", "generate_final_summary"]:
 		"""Decide whether to collapse summaries or generate final summary."""
 		num_tokens = self.length_function(state["collapsed_summaries"])
-		if num_tokens > MAX_TOKENS:
+		if num_tokens > self.max_tokens:
 			return "collapse_summaries"
 		return "generate_final_summary"
 
@@ -179,16 +176,10 @@ class MapReduceSummarizationService:
 
 		app = graph.compile()
 
-		text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
-			chunk_size=MAX_TOKENS,
-			chunk_overlap=0,
-		)
-		split_docs = text_splitter.split_documents(self.docs)
-
 		map_reduce_summary = ""
 		async for step in app.astream(
 			{
-				"contents": [doc.page_content for doc in split_docs],
+				"contents": [doc.page_content for doc in self.docs],
 				"summaries": [],
 				"collapsed_summaries": [],
 				"final_summary": "",
