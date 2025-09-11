@@ -3,6 +3,7 @@ import datetime
 import inngest
 from langchain.chat_models import init_chat_model
 from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
@@ -14,6 +15,12 @@ MAX_ALLOWED_TOKENS = 100_000
 
 # Lower bound for API rate limiting (RPM) for third-party LLM providers.
 MIN_PROVIDER_API_RATE_LIMIT = 500
+
+# Text chunk size for `RecursiveCharacterTextSplitter`
+CHUNK_SIZE = 16_000
+
+# Text chunk overlap for `RecursiveCharacterTextSplitter`
+CHUNK_OVERLAP = 0
 
 
 @inngest_client.create_function(
@@ -72,12 +79,20 @@ async def summarization(ctx: inngest.Context) -> str:
 			temperature=llm_model_overrides.temperature,
 		)
 
-		documents: list[Document] = [
-			Document(page_content=str(content)) for content in docs_data
-		]
+		text_splitter = RecursiveCharacterTextSplitter(
+			chunk_size=CHUNK_SIZE,
+			chunk_overlap=CHUNK_OVERLAP,
+		)
+
+		documents: list[Document] = []
+
+		for content in docs_data:
+			chunks = text_splitter.split_text(str(content))
+			documents.extend([Document(page_content=chunk) for chunk in chunks])
 
 		total_tokens = 0
 		token_limit_exceeded = False
+
 		for doc in documents:
 			total_tokens += llm.get_num_tokens(doc.page_content)
 			if total_tokens > MAX_ALLOWED_TOKENS:
