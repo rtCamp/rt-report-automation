@@ -8,4 +8,4 @@ MIN_PROVIDER_API_RATE_LIMIT = 500
 CHUNK_SIZE = 16_000
 
 # Text chunk overlap for `RecursiveCharacterTextSplitter`
-CHUNK_OVERLAP = 0
+CHUNK_OVERLAP = 200
