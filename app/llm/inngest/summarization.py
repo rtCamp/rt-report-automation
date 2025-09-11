@@ -2,7 +2,6 @@ import datetime
 
 import inngest
 from langchain.chat_models import init_chat_model
-from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pydantic import ValidationError
 
@@ -78,7 +77,7 @@ async def summarization(ctx: inngest.Context) -> str:
 			chunk_overlap=CHUNK_OVERLAP,
 		)
 
-		documents: list[Document] = text_splitter.create_documents(
+		documents = text_splitter.create_documents(
 			[str(content) for content in docs_data],
 		)
 
