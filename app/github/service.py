@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import InternalServerError
+from app.github.query.gql_queries import get_issue_fetch_query, get_issue_search_query
 
 
 class GitHubAuthService:
@@ -25,7 +26,7 @@ class GitHubAuthService:
 
 		return self._signing_key
 
-	def generate_app_signed_jwt(self) -> str:
+	def _generate_app_signed_jwt(self) -> str:
 		"""Generate a JWT for GitHub App authentication."""
 		try:
 			current_time = int(time.time())
@@ -45,13 +46,13 @@ class GitHubAuthService:
 				"Failed to generate JWT",
 			)
 
-	async def get_access_token(self) -> dict:
+	async def _get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
 		cached_token = redis_client.get("github_access_token")
 		if cached_token is not None:
-			return {"token": cached_token}
+			return str(cached_token)
 
-		jwt_token = self.generate_app_signed_jwt()
+		jwt_token = self._generate_app_signed_jwt()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
 			f"https://api.github.com/app/installations/{installation_id}/access_tokens"
@@ -88,8 +89,155 @@ class GitHubAuthService:
 			# Cache the token in Redis
 			redis_client.set(
 				"github_access_token",
-				ttl_seconds,
 				access_token_value,
+				ttl_seconds,
 			)
 
-		return {"token": access_token_value}
+		return access_token_value
+
+
+class GitHubDataService:
+	"""Service for interacting with GitHub API to fetch repository data."""
+
+	def __init__(self):
+		self.auth = GitHubAuthService()
+
+	async def fetch_repository_issues(
+		self,
+		owner_name,
+		repository_name,
+		start_date,
+		end_date,
+		project_board,
+	):
+		"""Fetch issues from a GitHub repository within a specific date range.
+
+		Args:
+			owner_name (str): The owner of the repository.
+			repository_name (str): The name of the repository.
+			start_date (str): The start date in ISO 8601 format (YYYY-MM-DD).
+			end_date (str): The end date in ISO 8601 format (YYYY-MM-DD).
+			project_board (str): The name of the project board to filter issues.
+		Returns:
+			list: A list of issues matching the criteria.
+		"""
+		search_query = get_issue_search_query(
+			owner_name,
+			repository_name,
+			start_date,
+			end_date,
+		)
+		query_issues = get_issue_fetch_query(comments=True)
+		issues: list[dict] = []
+		issues_pagination_cursor: str | None = None
+		gh_access_token = await self.auth._get_access_token()
+
+		async with httpx.AsyncClient() as client:
+			while True:
+				response = await client.post(
+					str(settings.GITHUB_API_GQL_ENDPOINT),
+					json={
+						"query": query_issues,
+						"variables": {
+							"search_query": search_query,
+							"after": issues_pagination_cursor,
+						},
+					},
+					headers={"Authorization": f"Bearer {gh_access_token}"},
+				)
+
+				if response.status_code != 200:
+					if response.status_code == 401:
+						curr_access_token = redis_client.get("github_access_token")
+
+						if curr_access_token != gh_access_token:
+							gh_access_token = curr_access_token
+						else:
+							redis_client.delete("github_access_token")
+							gh_access_token = await self.auth._get_access_token()
+						continue
+
+					raise Exception(
+						f"GitHub API error: {response.status_code} - {response.text}",
+					)
+				data = response.json()
+
+				search_data = data.get("data", {}).get("search")
+				if not search_data:
+					break
+
+				issues.extend(search_data.get("nodes", []))
+
+				page_info = search_data.get("pageInfo", {})
+				if not page_info.get("hasNextPage"):
+					break
+
+				issues_pagination_cursor = page_info.get("endCursor")
+
+			processed_issues: list[dict] = []
+
+			for item in issues:
+				project_items = []
+				for e in item.get("projectItems", {}).get("items", []):
+					if e.get("project", {}).get("title") == project_board:
+						field_values = e.get("fieldValues")
+						if field_values:
+							filtered_items = [
+								f for f in field_values.get("items", []) if "name" in f
+							]
+							e = {
+								**e,
+								"fieldValues": {
+									**field_values,
+									"items": filtered_items,
+								},
+							}
+						if e.get("fieldValues", {}).get("items"):
+							project_items.append(e)
+
+				is_blocked = any(
+					any(
+						status.get("name") == "Blocked"
+						for status in proj.get("fieldValues", {}).get("items", [])
+					)
+					for proj in project_items
+				)
+
+				# Extract selected properties
+				comments = item.get("comments")
+				labels = item.get("labels")
+				cross_referenced_prs = item.get("crossReferencedPRs")
+
+				# Base object without those fields
+				rest = {
+					k: v
+					for k, v in item.items()
+					if k not in ["comments", "labels", "crossReferencedPRs"]
+				}
+
+				processed_item = {**rest}
+
+				# Add labels if present and non-empty
+				if labels and labels.get("items"):
+					processed_item["labels"] = labels
+
+				# Add crossReferencedPRs only if items exist and the item has pr_id
+				if cross_referenced_prs:
+					items = cross_referenced_prs.get("items", [])
+					if items and items[0].get("source").get("pr_id"):
+						processed_item["crossReferencedPRs"] = cross_referenced_prs
+
+				# Always include projectItems with filtered items
+				processed_item["projectItems"] = {
+					**item.get("projectItems", {}),
+					"items": project_items,
+				}
+
+				# Add comments only if issue is blocked
+				if is_blocked:
+					processed_item["comments"] = comments
+
+				if project_items:
+					processed_issues.append(processed_item)
+
+			return processed_issues
