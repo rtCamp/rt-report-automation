@@ -9,7 +9,6 @@ from app.core.adapters import inngest_client
 from app.llm.inngest.constants import (
 	CHUNK_OVERLAP,
 	CHUNK_SIZE,
-	MAX_ALLOWED_TOKENS,
 	MIN_PROVIDER_API_RATE_LIMIT,
 )
 from app.llm.models.summarization import ModelMetadata
@@ -19,6 +18,7 @@ from app.llm.services import MapReduceSummarizationService, StuffService
 @inngest_client.create_function(
 	fn_id="summarization",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/summarization"),
+	retries=2,
 	throttle=inngest.Throttle(
 		limit=MIN_PROVIDER_API_RATE_LIMIT,
 		period=datetime.timedelta(minutes=1),
@@ -84,9 +84,12 @@ async def summarization(ctx: inngest.Context) -> str:
 		total_tokens = 0
 		token_limit_exceeded = False
 
+		# Use 60% of the context window to account for prompt/output overhead.
+		max_allowed_tokens = int(llm_model_overrides.model.get_context_size() * 0.6)
+
 		for doc in documents:
 			total_tokens += llm.get_num_tokens(doc.page_content)
-			if total_tokens > MAX_ALLOWED_TOKENS:
+			if total_tokens > max_allowed_tokens:
 				token_limit_exceeded = True
 				break
 
@@ -97,10 +100,7 @@ async def summarization(ctx: inngest.Context) -> str:
 		map_reduce_service = MapReduceSummarizationService(
 			llm=llm,
 			docs=documents,
-			max_tokens=int(
-				# Use 60% of the context window to account for prompt/output overhead.
-				llm_model_overrides.model.get_context_size() * 0.6,
-			),
+			max_tokens=max_allowed_tokens,
 		)
 		return await map_reduce_service.summarize()
 
