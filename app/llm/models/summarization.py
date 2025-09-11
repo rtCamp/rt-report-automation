@@ -90,7 +90,7 @@ class ModelMetadata(BaseModel):
 		default=LLMProvider.GOOGLE_GENAI,
 	)
 
-	model_name: SupportedModels = Field(
+	model: SupportedModels = Field(
 		description="Name of the LLM model",
 		examples=[SupportedModels.GEMINI_2_5_FLASH],
 		default=SupportedModels.GEMINI_2_5_FLASH,
@@ -114,9 +114,9 @@ class SummarizeRequest(BaseModel):
 
 
 class SummarizeResponse(BaseModel):
-	run_id: str = Field(
+	run_ids: list[str] = Field(
 		description="Unique identifier for the summarization run",
-		examples=["123e4567-e89b-12d3-a456"],
+		examples=[["123e4567-e89b-12d3-a456"]],
 	)
 
 

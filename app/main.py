@@ -5,7 +5,7 @@ from app.core.adapters import setup_inngest
 from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
-from app.llm.inngest import summarization
+from app.llm.inngest import summarization, summarization_workflow
 
 configure_logging(log_level=LogLevels.info)
 
@@ -29,7 +29,7 @@ app.add_middleware(
 register_routes(app)
 
 # Initialize Inngest.
-setup_inngest(app, [summarization])
+setup_inngest(app, [summarization_workflow, summarization])
 
 if __name__ == "__main__":
 	import uvicorn
