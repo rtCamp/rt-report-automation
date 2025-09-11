@@ -78,11 +78,9 @@ async def summarization(ctx: inngest.Context) -> str:
 			chunk_overlap=CHUNK_OVERLAP,
 		)
 
-		documents: list[Document] = []
-
-		for content in docs_data:
-			chunks = text_splitter.split_text(str(content))
-			documents.extend([Document(page_content=chunk) for chunk in chunks])
+		documents: list[Document] = text_splitter.create_documents(
+			[str(content) for content in docs_data],
+		)
 
 		total_tokens = 0
 		token_limit_exceeded = False
