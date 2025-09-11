@@ -16,6 +16,7 @@ class GitHubAuthService:
 
 	def __init__(self):
 		self._signing_key: bytes | None = None
+		self.access_token_key: str = "github_access_token"
 
 	@property
 	def signing_key(self) -> bytes:
@@ -46,9 +47,9 @@ class GitHubAuthService:
 				"Failed to generate JWT",
 			)
 
-	async def _get_access_token(self) -> str:
+	async def get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
-		cached_token = redis_client.get("github_access_token")
+		cached_token = redis_client.get(self.access_token_key)
 		if cached_token is not None:
 			return str(cached_token)
 
@@ -88,7 +89,7 @@ class GitHubAuthService:
 
 			# Cache the token in Redis
 			redis_client.set(
-				"github_access_token",
+				self.access_token_key,
 				access_token_value,
 				ttl_seconds,
 			)
@@ -109,7 +110,7 @@ class GitHubDataService:
 		start_date,
 		end_date,
 		project_board,
-	):
+	) -> list[dict]:
 		"""Fetch issues from a GitHub repository within a specific date range.
 
 		Args:
@@ -130,7 +131,7 @@ class GitHubDataService:
 		query_issues = get_issue_fetch_query(comments=True)
 		issues: list[dict] = []
 		issues_pagination_cursor: str | None = None
-		gh_access_token = await self.auth._get_access_token()
+		gh_access_token = await self.auth.get_access_token()
 
 		async with httpx.AsyncClient() as client:
 			while True:
@@ -148,13 +149,13 @@ class GitHubDataService:
 
 				if response.status_code != 200:
 					if response.status_code == 401:
-						curr_access_token = redis_client.get("github_access_token")
+						curr_access_token = redis_client.get(self.auth.access_token_key)
 
 						if curr_access_token != gh_access_token:
 							gh_access_token = curr_access_token
 						else:
-							redis_client.delete("github_access_token")
-							gh_access_token = await self.auth._get_access_token()
+							redis_client.delete(self.auth.access_token_key)
+							gh_access_token = await self.auth.get_access_token()
 						continue
 
 					raise Exception(
@@ -178,23 +179,29 @@ class GitHubDataService:
 
 			for item in issues:
 				project_items = []
-				for e in item.get("projectItems", {}).get("items", []):
-					if e.get("project", {}).get("title") == project_board:
-						field_values = e.get("fieldValues")
+				for project_item in item.get("projectItems", {}).get("items", []):
+					if project_item.get("project", {}).get("title") == project_board:
+						field_values = project_item.get("fieldValues")
 						if field_values:
+							# Projectboard status name filtering to remove empty{}
+							# objects
 							filtered_items = [
-								f for f in field_values.get("items", []) if "name" in f
+								proj_status
+								for proj_status in field_values.get("items", [])
+								if "name" in proj_status
 							]
-							e = {
-								**e,
+							project_item = {
+								**project_item,
 								"fieldValues": {
 									**field_values,
 									"items": filtered_items,
 								},
 							}
-						if e.get("fieldValues", {}).get("items"):
-							project_items.append(e)
+						if project_item.get("fieldValues", {}).get("items"):
+							project_items.append(project_item)
 
+				# Checks for Blocked issues on projectboard
+				# Exclude comments from issues body for non-blocked issues.
 				is_blocked = any(
 					any(
 						status.get("name") == "Blocked"
@@ -208,11 +215,12 @@ class GitHubDataService:
 				labels = item.get("labels")
 				cross_referenced_prs = item.get("crossReferencedPRs")
 
-				# Base object without those fields
+				# Filters the raw issue object to exclude the fields listed below.
+				# The excluded fields will be processed and appended to the dict later.
 				rest = {
-					k: v
-					for k, v in item.items()
-					if k not in ["comments", "labels", "crossReferencedPRs"]
+					key: value
+					for key, value in item.items()
+					if key not in ["comments", "labels", "crossReferencedPRs"]
 				}
 
 				processed_item = {**rest}
