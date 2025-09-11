@@ -7,20 +7,14 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
+from app.llm.inngest.constants import (
+	CHUNK_OVERLAP,
+	CHUNK_SIZE,
+	MAX_ALLOWED_TOKENS,
+	MIN_PROVIDER_API_RATE_LIMIT,
+)
 from app.llm.models.summarization import ModelMetadata
 from app.llm.services import MapReduceSummarizationService, StuffService
-
-# Maximum allowed tokens for direct summarization without map-reduce.
-MAX_ALLOWED_TOKENS = 100_000
-
-# Lower bound for API rate limiting (RPM) for third-party LLM providers.
-MIN_PROVIDER_API_RATE_LIMIT = 500
-
-# Text chunk size for `RecursiveCharacterTextSplitter`
-CHUNK_SIZE = 16_000
-
-# Text chunk overlap for `RecursiveCharacterTextSplitter`
-CHUNK_OVERLAP = 0
 
 
 @inngest_client.create_function(
