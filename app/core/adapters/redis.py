@@ -16,6 +16,7 @@ def get_redis_client() -> Redis:
 			port=settings.REDIS_PORT,
 			db=0,
 			password=settings.REDIS_PASSWORD.get_secret_value() or None,
+			decode_responses=True,
 		)
 		client.ping()
 		return client
