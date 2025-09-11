@@ -7,8 +7,9 @@ from fastapi import HTTPException
 
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
-from app.core.exceptions import InternalServerError
+from app.core.exceptions import AuthenticationError, InternalServerError
 from app.github.query.gql_queries import get_issue_fetch_query, get_issue_search_query
+from app.github.utils.helpers import process_project_board_issues
 
 
 class GitHubAuthService:
@@ -132,6 +133,8 @@ class GitHubDataService:
 		issues: list[dict] = []
 		issues_pagination_cursor: str | None = None
 		gh_access_token = await self.auth.get_access_token()
+		max_retries = 3  # Max retries for overcoming 401 code.
+		retries = 0  # Counter for 401 responses
 
 		async with httpx.AsyncClient() as client:
 			while True:
@@ -149,6 +152,13 @@ class GitHubDataService:
 
 				if response.status_code != 200:
 					if response.status_code == 401:
+						if retries >= max_retries:
+							raise AuthenticationError(
+								"""GitHub GraphQl API returned 401 Unauthorized
+								after max retries""",
+							)
+						retries += 1
+
 						curr_access_token = redis_client.get(self.auth.access_token_key)
 
 						if curr_access_token != gh_access_token:
@@ -175,77 +185,4 @@ class GitHubDataService:
 
 				issues_pagination_cursor = page_info.get("endCursor")
 
-			processed_issues: list[dict] = []
-
-			for item in issues:
-				project_items = []
-				for project_item in item.get("projectItems", {}).get("items", []):
-					if project_item.get("project", {}).get("title") == project_board:
-						field_values = project_item.get("fieldValues")
-						if field_values:
-							# Projectboard status name filtering to remove empty{}
-							# objects
-							filtered_items = [
-								proj_status
-								for proj_status in field_values.get("items", [])
-								if "name" in proj_status
-							]
-							project_item = {
-								**project_item,
-								"fieldValues": {
-									**field_values,
-									"items": filtered_items,
-								},
-							}
-						if project_item.get("fieldValues", {}).get("items"):
-							project_items.append(project_item)
-
-				# Checks for Blocked issues on projectboard
-				# Exclude comments from issues body for non-blocked issues.
-				is_blocked = any(
-					any(
-						status.get("name") == "Blocked"
-						for status in proj.get("fieldValues", {}).get("items", [])
-					)
-					for proj in project_items
-				)
-
-				# Extract selected properties
-				comments = item.get("comments")
-				labels = item.get("labels")
-				cross_referenced_prs = item.get("crossReferencedPRs")
-
-				# Filters the raw issue object to exclude the fields listed below.
-				# The excluded fields will be processed and appended to the dict later.
-				rest = {
-					key: value
-					for key, value in item.items()
-					if key not in ["comments", "labels", "crossReferencedPRs"]
-				}
-
-				processed_item = {**rest}
-
-				# Add labels if present and non-empty
-				if labels and labels.get("items"):
-					processed_item["labels"] = labels
-
-				# Add crossReferencedPRs only if items exist and the item has pr_id
-				if cross_referenced_prs:
-					items = cross_referenced_prs.get("items", [])
-					if items and items[0].get("source").get("pr_id"):
-						processed_item["crossReferencedPRs"] = cross_referenced_prs
-
-				# Always include projectItems with filtered items
-				processed_item["projectItems"] = {
-					**item.get("projectItems", {}),
-					"items": project_items,
-				}
-
-				# Add comments only if issue is blocked
-				if is_blocked:
-					processed_item["comments"] = comments
-
-				if project_items:
-					processed_issues.append(processed_item)
-
-			return processed_issues
+			return process_project_board_issues(issues, project_board)
