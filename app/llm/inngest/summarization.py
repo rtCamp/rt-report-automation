@@ -2,18 +2,18 @@ import datetime
 
 import inngest
 from langchain.chat_models import init_chat_model
-from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
+from app.llm.inngest.constants import (
+	CHUNK_OVERLAP,
+	CHUNK_SIZE,
+	MAX_ALLOWED_TOKENS,
+	MIN_PROVIDER_API_RATE_LIMIT,
+)
 from app.llm.models.summarization import ModelMetadata
 from app.llm.services import MapReduceSummarizationService, StuffService
-
-# Maximum allowed tokens for direct summarization without map-reduce.
-MAX_ALLOWED_TOKENS = 100_000
-
-# Lower bound for API rate limiting (RPM) for third-party LLM providers.
-MIN_PROVIDER_API_RATE_LIMIT = 500
 
 
 @inngest_client.create_function(
@@ -72,12 +72,18 @@ async def summarization(ctx: inngest.Context) -> str:
 			temperature=llm_model_overrides.temperature,
 		)
 
-		documents: list[Document] = [
-			Document(page_content=str(content)) for content in docs_data
-		]
+		text_splitter = RecursiveCharacterTextSplitter(
+			chunk_size=CHUNK_SIZE,
+			chunk_overlap=CHUNK_OVERLAP,
+		)
+
+		documents = text_splitter.create_documents(
+			[str(content) for content in docs_data],
+		)
 
 		total_tokens = 0
 		token_limit_exceeded = False
+
 		for doc in documents:
 			total_tokens += llm.get_num_tokens(doc.page_content)
 			if total_tokens > MAX_ALLOWED_TOKENS:
