@@ -90,7 +90,7 @@ class ModelMetadata(BaseModel):
 		default=LLMProvider.GOOGLE_GENAI,
 	)
 
-	model_name: SupportedModels = Field(
+	model: SupportedModels = Field(
 		description="Name of the LLM model",
 		examples=[SupportedModels.GEMINI_2_5_FLASH],
 		default=SupportedModels.GEMINI_2_5_FLASH,

@@ -7,6 +7,7 @@ from app.llm.inngest.summarization import summarization
 @inngest_client.create_function(
 	fn_id="summarization_workflow",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/summarization_workflow"),
+	retries=2,
 )
 async def summarization_workflow(ctx: inngest.Context) -> str:
 	return await ctx.step.invoke(
