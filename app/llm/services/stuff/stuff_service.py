@@ -5,8 +5,7 @@ from langchain_core.documents import Document
 from langchain_core.language_models import BaseLanguageModel
 from langfuse import observe
 
-from app.core.adapters.langfuse.langfuse import langfuse
-from app.core.adapters.langfuse.langfuse_wrappers import traced_chain_ainvoke
+from app.core.adapters.langfuse import langfuse, traced_chain_ainvoke
 from app.llm.models.summarization import ProjectSummarySchema
 from app.llm.prompts.prompt import FORMAT
 

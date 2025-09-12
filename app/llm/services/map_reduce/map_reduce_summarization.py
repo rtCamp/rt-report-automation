@@ -12,7 +12,7 @@ from langfuse import observe
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
 
-from app.core.adapters.langfuse.langfuse_wrappers import (
+from app.core.adapters.langfuse import (
 	traced_llm_ainvoke,
 	traced_llm_invoke,
 )
