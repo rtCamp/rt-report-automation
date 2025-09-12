@@ -6,6 +6,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
+from app.core.utils import validate
 from app.llm.inngest.constants import (
 	CHUNK_OVERLAP,
 	CHUNK_SIZE,
@@ -37,33 +38,19 @@ async def summarization(ctx: inngest.Context) -> str:
 	"""
 	try:
 		event_data = ctx.event.data
-		if not isinstance(event_data, dict):
-			raise TypeError(
-				f"Expected dict for event data, got {type(event_data).__name__}",
-			)
+		validate(event_data, dict)
 
 		# Extract llm_model_overrides and data.
 		llm_model_data = event_data.get("llm_model_overrides")
 		docs_data = event_data.get("data", [])
 
-		# Validate llm_model_data is a dict.
-		if not isinstance(llm_model_data, (dict, type(None))):
-			raise TypeError(
-				f"Expected dict or None, got {type(llm_model_data).__name__}",
-			)
+		validate(llm_model_data, (dict, type(None)))
 
-		# Validate docs_data is a list.
-		if not isinstance(docs_data, list):
-			raise TypeError(
-				f"Expected list for 'data', got {type(docs_data).__name__}",
-			)
+		if not validate(docs_data, list):
+			raise
 
-		# Validate each item in docs_data is a string.
 		for i, content in enumerate(docs_data):
-			if not isinstance(content, str):
-				raise TypeError(
-					f"Expected string at index {i}, got {type(content).__name__}",
-				)
+			validate(content, str)
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 		llm = init_chat_model(
