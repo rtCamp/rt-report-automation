@@ -141,7 +141,7 @@ def build_processed_issue_data(
 	# Add crossReferencedPRs only if items exist and the item has pr_id
 	if cross_referenced_prs:
 		items = cross_referenced_prs.get("items", [])
-		if items and items[0].get("source").get("pr_id"):
+		if items and items[0].get("source", {}).get("pr_id"):
 			processed_item["crossReferencedPRs"] = cross_referenced_prs
 
 	# Always include projectItems with filtered items

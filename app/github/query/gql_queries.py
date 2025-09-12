@@ -12,91 +12,93 @@ def get_issue_fetch_query(*, include_comments: bool = False) -> str:  # noqa: FB
 	Returns:
 		str: A GraphQL query string.
 	"""
-	return f"""
-    query ($search_query: String!, $after: String) {{
-      search(query: $search_query, type: ISSUE, first: 100, after: $after) {{
-        pageInfo {{
-          hasNextPage
-          endCursor
-        }}
-        nodes {{
-          ... on Issue {{
-            number
-            title
-            state
-            url
-            updatedAt
-            repository {{
-              owner {{
-                login
-              }}
-              name
-            }}
-            labels(first: 50) {{
-              items: nodes {{
-                name
-              }}
-            }}
-            crossReferencedPRs: timelineItems(
-              first: 50
-              itemTypes: [CROSS_REFERENCED_EVENT]
-            ) {{
-              items: nodes {{
-                ... on CrossReferencedEvent {{
-                  source {{
-                    ... on PullRequest {{
-                      pr_id: number
-                      title
-                      url
-                    }}
-                  }}
-                }}
-              }}
-            }}
-            projectItems(first: 50) {{
-              items: nodes {{
-                id
-                project {{
-                  title
-                  number
-                }}
-                fieldValues(first: 50) {{
-                  items: nodes {{
-                    # Single-select fields (e.g. Status, Priority, etc.)
-                    ... on ProjectV2ItemFieldSingleSelectValue {{
-                      name
-                      field {{
-                        ... on ProjectV2SingleSelectField {{
-                          name
-                        }}
-                      }}
-                    }}
-                  }}
-                }}
-              }}
-            }}
-            {
-		'''
-            comments(first: 100) {
-              items: nodes {
-                author {
-                  login
-                }
-                body
-                createdAt
-                updatedAt
-                url
-              }
-            }
-            '''
+	comments_fragment = (
+		"""
+				comments(first: 100) {
+				items: nodes {
+					author {
+					login
+					}
+					body
+					createdAt
+					updatedAt
+					url
+				}
+				}
+		"""
 		if include_comments
 		else ""
-	}
-          }}
-        }}
-      }}
-    }}
-    """
+	)
+
+	return f"""
+	query ($search_query: String!, $after: String) {{
+		search(query: $search_query, type: ISSUE, first: 100, after: $after) {{
+			pageInfo {{
+			hasNextPage
+			endCursor
+			}}
+			nodes {{
+			... on Issue {{
+				number
+				title
+				state
+				url
+				updatedAt
+				repository {{
+				owner {{
+					login
+				}}
+				name
+				}}
+				labels(first: 50) {{
+				items: nodes {{
+					name
+				}}
+				}}
+				crossReferencedPRs: timelineItems(
+				first: 50
+				itemTypes: [CROSS_REFERENCED_EVENT]
+				) {{
+				items: nodes {{
+					... on CrossReferencedEvent {{
+					source {{
+						... on PullRequest {{
+						pr_id: number
+						title
+						url
+						}}
+					}}
+					}}
+				}}
+				}}
+				projectItems(first: 50) {{
+				items: nodes {{
+					id
+					project {{
+					title
+					number
+					}}
+					fieldValues(first: 50) {{
+					items: nodes {{
+						# Single-select fields (e.g. Status, Priority, etc.)
+						... on ProjectV2ItemFieldSingleSelectValue {{
+						name
+						field {{
+							... on ProjectV2SingleSelectField {{
+							name
+							}}
+						}}
+						}}
+					}}
+					}}
+				}}
+				}}
+				{comments_fragment}
+			}}
+			}}
+		}}
+		}}
+		"""
 
 
 def get_issue_search_query(

@@ -156,7 +156,7 @@ class GitHubDataService:
 					if response.status_code == 401:
 						if curr_retries >= MAX_RETRIES_ATTEMPT:
 							raise AuthenticationError(
-								"""GitHub GraphQl API returned 401 Unauthorized
+								"""GitHub GraphQL API returned 401 Unauthorized
 								after max retries""",
 							)
 						curr_retries += 1
