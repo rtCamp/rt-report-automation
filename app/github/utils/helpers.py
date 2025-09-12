@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from app.github.utils.constants import BLOCKED_ISSUE_STATUS_NAME
+
 
 def format_to_yymmdd(iso_date: str) -> str:
 	"""Formats an ISO 8601 date string to 'YYYY-MM-DD'.
@@ -17,7 +19,7 @@ def format_to_yymmdd(iso_date: str) -> str:
 	return f"{yy}-{mm}-{dd}"
 
 
-def process_project_board_issues(issues: list[dict], project_board: str) -> list[dict]:
+def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dict]:
 	"""
 	Filters and processes GitHub issues for a specific project board.
 
@@ -63,7 +65,7 @@ def process_project_board_issues(issues: list[dict], project_board: str) -> list
 		# Exclude comments from issues body for non-blocked issues.
 		is_blocked = any(
 			any(
-				status.get("name") == "Blocked"
+				status.get("name") == BLOCKED_ISSUE_STATUS_NAME
 				for status in proj.get("fieldValues", {}).get("items", [])
 			)
 			for proj in project_items

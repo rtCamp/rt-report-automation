@@ -105,6 +105,22 @@ def get_issue_search_query(
 	start_date: str,
 	end_date: str,
 ) -> str:
+	"""
+	Generate a GitHub issue search query string for GraphQL.
+
+	Builds a search query that targets issues in a specific repository
+	and filters them by their `updated` date range.
+
+	Args:
+		owner (str): The owner of the repository.
+		repo (str): The name of the repository.
+		start_date (str): Start date in ISO 8601 format (YYYY-MM-DD).
+		end_date (str): End date in ISO 8601 format (YYYY-MM-DD).
+
+	Returns:
+		str: A formatted GitHub issue search query string.
+	"""
+
 	query = "repo:{owner}/{repo} is:issue updated:{startDate}..{endDate}"
 	return query.format(
 		owner=owner,

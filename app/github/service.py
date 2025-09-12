@@ -9,7 +9,8 @@ from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError, InternalServerError
 from app.github.query.gql_queries import get_issue_fetch_query, get_issue_search_query
-from app.github.utils.helpers import process_project_board_issues
+from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY, MAX_RETRIES_ATTEMPT
+from app.github.utils.helpers import get_processed_issue_list
 
 
 class GitHubAuthService:
@@ -17,7 +18,6 @@ class GitHubAuthService:
 
 	def __init__(self):
 		self._signing_key: bytes | None = None
-		self.access_token_key: str = "github_access_token"
 
 	@property
 	def signing_key(self) -> bytes:
@@ -50,7 +50,7 @@ class GitHubAuthService:
 
 	async def get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
-		cached_token = redis_client.get(self.access_token_key)
+		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 		if cached_token is not None:
 			return str(cached_token)
 
@@ -90,7 +90,7 @@ class GitHubAuthService:
 
 			# Cache the token in Redis
 			redis_client.set(
-				self.access_token_key,
+				GITHUB_ACCESS_TOKEN_KEY,
 				access_token_value,
 				ttl_seconds,
 			)
@@ -133,7 +133,7 @@ class GitHubDataService:
 		issues: list[dict] = []
 		issues_pagination_cursor: str | None = None
 		gh_access_token = await self.auth.get_access_token()
-		max_retries = 3  # Max retries for overcoming 401 code.
+		max_retries = MAX_RETRIES_ATTEMPT  # Max retries for overcoming 401 code.
 		retries = 0  # Counter for 401 responses
 
 		async with httpx.AsyncClient() as client:
@@ -159,12 +159,12 @@ class GitHubDataService:
 							)
 						retries += 1
 
-						curr_access_token = redis_client.get(self.auth.access_token_key)
+						curr_access_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 
 						if curr_access_token != gh_access_token:
 							gh_access_token = curr_access_token
 						else:
-							redis_client.delete(self.auth.access_token_key)
+							redis_client.delete(GITHUB_ACCESS_TOKEN_KEY)
 							gh_access_token = await self.auth.get_access_token()
 						continue
 
@@ -185,4 +185,4 @@ class GitHubDataService:
 
 				issues_pagination_cursor = page_info.get("endCursor")
 
-			return process_project_board_issues(issues, project_board)
+			return get_processed_issue_list(issues, project_board)
