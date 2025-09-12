@@ -3,6 +3,7 @@ import datetime
 import inngest
 from langchain.chat_models import init_chat_model
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langfuse import observe
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
@@ -24,6 +25,7 @@ from app.llm.services import MapReduceSummarizationService, StuffService
 		period=datetime.timedelta(minutes=1),
 	),
 )
+@observe(name="summarization_workflow")
 async def summarization(ctx: inngest.Context) -> str:
 	"""Inngest function to perform map-reduce style summarization.
 
@@ -66,6 +68,7 @@ async def summarization(ctx: inngest.Context) -> str:
 				)
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
+
 		llm = init_chat_model(
 			llm_model_overrides.model.value,
 			model_provider=llm_model_overrides.provider.value,
