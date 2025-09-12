@@ -1,4 +1,5 @@
 
+import datetime
 
 import inngest
 from pydantic import ValidationError
@@ -6,6 +7,7 @@ from pydantic import ValidationError
 from app.core.adapters import inngest_client
 from app.core.utils import to_unix, validate
 from app.llm.models.summarization import ProjectMetadata, SlackMetadata
+from app.slack.constants import SLACK_API_RATE_LIMIT
 from app.slack.service import SlackService
 
 
@@ -13,6 +15,10 @@ from app.slack.service import SlackService
 	fn_id="fetch_slack",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/fetch_slack"),
 	retries=2,
+	throttle=inngest.Throttle(
+		limit=SLACK_API_RATE_LIMIT,
+		period=datetime.timedelta(minutes=1),
+	),
 )
 async def fetch_slack(ctx: inngest.Context):
 		try:
