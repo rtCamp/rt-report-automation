@@ -4,7 +4,7 @@ import inngest
 
 from app.core.adapters import inngest_client
 from app.llm.inngest.summarization import summarization
-from app.slack.inngest.slack import fetch_slack
+from app.slack.inngest import fetch_slack
 
 
 @inngest_client.create_function(

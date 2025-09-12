@@ -6,7 +6,7 @@ from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
 from app.llm.inngest import summarization, summarization_workflow
-from app.slack.inngest.slack import fetch_slack
+from app.slack.inngest import fetch_slack
 
 configure_logging(log_level=LogLevels.info)
 
