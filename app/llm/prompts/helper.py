@@ -1,7 +1,7 @@
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langfuse import observe
 
-from app.core.adapters import langfuse
+from app.core.adapters.langfuse import langfuse
 
 
 @observe(name="fetch_langfuse_prompt")
