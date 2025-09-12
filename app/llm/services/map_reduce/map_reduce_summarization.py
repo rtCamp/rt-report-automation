@@ -12,6 +12,10 @@ from langfuse import observe
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
 
+from app.core.adapters.langfuse import (
+	traced_llm_ainvoke,
+	traced_llm_invoke,
+)
 from app.llm.models.summarization import ProjectSummarySchema
 from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
 from app.llm.prompts.helper import get_langfuse_prompt
@@ -47,7 +51,7 @@ class MapReduceSummarizationService:
 		"""
 		return sum(self.llm.get_num_tokens(doc.page_content) for doc in documents)
 
-	@observe()
+	@observe(name="map_reduce_generate_summary")
 	def generate_summary(
 		self,
 		state: SummaryState,
@@ -59,7 +63,7 @@ class MapReduceSummarizationService:
 			{"context": state["content"]},
 		)
 
-		response = self.llm.invoke(prompt.to_string())
+		response = traced_llm_invoke(self.llm, prompt.to_string())
 		summary = response.content
 		return {
 			"summaries": [
@@ -84,7 +88,7 @@ class MapReduceSummarizationService:
 			],
 		}
 
-	@observe()
+	@observe(name="map_reduce_reduce_step")
 	async def _reduce(
 		self,
 		docs: list[Document],
@@ -99,12 +103,13 @@ class MapReduceSummarizationService:
 			{"docs": combined_summaries},
 		)
 
-		response = await self.llm.ainvoke(prompt.to_string())
+		response = await traced_llm_ainvoke(self.llm, prompt.to_string())
 		summary = response.content
 		if isinstance(summary, (dict | list)):
 			return json.dumps(summary)
 		return str(summary)
 
+	@observe(name="map_reduce_collapse_summaries")
 	async def collapse_summaries(self, state: OverallState):
 		"""Collapse summaries for the given state."""
 		doc_lists = split_list_of_docs(
@@ -128,7 +133,7 @@ class MapReduceSummarizationService:
 			return "collapse_summaries"
 		return "generate_final_summary"
 
-	@observe()
+	@observe(name="map_reduce_final_summary")
 	async def generate_final_summary(
 		self,
 		state: OverallState,
@@ -149,7 +154,7 @@ class MapReduceSummarizationService:
 			},
 		)
 
-		response = await self.llm.ainvoke(prompt.to_string())
+		response = await traced_llm_ainvoke(self.llm, prompt.to_string())
 
 		if not isinstance(response.content, str):
 			return {"final_summary": "Error: Unable to parse summary."}
@@ -157,6 +162,7 @@ class MapReduceSummarizationService:
 		parsed_summary = pydantic_parser.parse(response.content)
 		return {"final_summary": parsed_summary.model_dump_json()}
 
+	@observe(name="map_reduce_summarize")
 	async def summarize(self):
 		"""Summarize the given contents."""
 
