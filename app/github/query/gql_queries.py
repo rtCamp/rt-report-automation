@@ -1,16 +1,16 @@
 from app.github.utils.helpers import format_to_yymmdd
 
 
-def get_issue_fetch_query(comments: bool = False) -> str:  # noqa: FBT001, FBT002 By default the issue comments are disabled in this gql query.
+def get_issue_fetch_query(*, include_comments: bool = False) -> str:  # noqa: FBT001, FBT002 By default the issue comments are disabled in this gql query.
 	"""
 	Generates a GraphQL query string to fetch GitHub issues.
 
 	Args:
-	comments (bool): If True, the query will fetch the first 100 comments.
-	Defaults to False.
+		include_comments (bool): If True, the query will fetch the first 100 comments.
+		Defaults to False.
 
 	Returns:
-	str: A GraphQL query string.
+		str: A GraphQL query string.
 	"""
 	return f"""
     query ($search_query: String!, $after: String) {{
@@ -89,7 +89,7 @@ def get_issue_fetch_query(comments: bool = False) -> str:  # noqa: FBT001, FBT00
               }
             }
             '''
-		if comments
+		if include_comments
 		else ""
 	}
           }}
@@ -121,10 +121,10 @@ def get_issue_search_query(
 		str: A formatted GitHub issue search query string.
 	"""
 
-	query = "repo:{owner}/{repo} is:issue updated:{startDate}..{endDate}"
+	query = "repo:{owner}/{repo} is:issue updated:{start_date}..{end_date}"
 	return query.format(
 		owner=owner,
 		repo=repo,
-		startDate=format_to_yymmdd(start_date),
-		endDate=format_to_yymmdd(end_date),
+		start_date=format_to_yymmdd(start_date),
+		end_date=format_to_yymmdd(end_date),
 	)

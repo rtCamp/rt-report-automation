@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError, InternalServerError
-from app.github.query.gql_queries import get_issue_fetch_query, get_issue_search_query
+from app.github.query import get_issue_fetch_query, get_issue_search_query
 from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY, MAX_RETRIES_ATTEMPT
 from app.github.utils.helpers import get_processed_issue_list
 
@@ -22,6 +22,7 @@ class GitHubAuthService:
 	@property
 	def signing_key(self) -> bytes:
 		"""Lazy load PEM key from environment variable."""
+
 		if self._signing_key is None:
 			key = settings.GITHUB_APP_PRIVATE_KEY.get_secret_value()
 			self._signing_key = key.encode("utf-8")
@@ -30,6 +31,7 @@ class GitHubAuthService:
 
 	def _generate_app_signed_jwt(self) -> str:
 		"""Generate a JWT for GitHub App authentication."""
+
 		try:
 			current_time = int(time.time())
 			expiration = settings.GITHUB_APP_SIGNED_JWT_TTL
@@ -50,6 +52,7 @@ class GitHubAuthService:
 
 	async def get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
+
 		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 		if cached_token is not None:
 			return str(cached_token)
@@ -129,12 +132,11 @@ class GitHubDataService:
 			start_date,
 			end_date,
 		)
-		query_issues = get_issue_fetch_query(comments=True)
+		query_issues = get_issue_fetch_query(include_comments=True)
 		issues: list[dict] = []
 		issues_pagination_cursor: str | None = None
 		gh_access_token = await self.auth.get_access_token()
-		max_retries = MAX_RETRIES_ATTEMPT  # Max retries for overcoming 401 code.
-		retries = 0  # Counter for 401 responses
+		curr_retries = 0  # Counter for 401 responses
 
 		async with httpx.AsyncClient() as client:
 			while True:
@@ -152,12 +154,12 @@ class GitHubDataService:
 
 				if response.status_code != 200:
 					if response.status_code == 401:
-						if retries >= max_retries:
+						if curr_retries >= MAX_RETRIES_ATTEMPT:
 							raise AuthenticationError(
 								"""GitHub GraphQl API returned 401 Unauthorized
 								after max retries""",
 							)
-						retries += 1
+						curr_retries += 1
 
 						curr_access_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 
@@ -171,6 +173,7 @@ class GitHubDataService:
 					raise Exception(
 						f"GitHub API error: {response.status_code} - {response.text}",
 					)
+
 				data = response.json()
 
 				search_data = data.get("data", {}).get("search")
