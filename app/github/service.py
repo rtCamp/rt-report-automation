@@ -7,7 +7,10 @@ from fastapi import HTTPException
 
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
-from app.core.exceptions import InternalServerError
+from app.core.exceptions import AuthenticationError, InternalServerError
+from app.github.query import get_issue_fetch_query, get_issue_search_query
+from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY
+from app.github.utils.helpers import get_processed_issue_list
 
 
 class GitHubAuthService:
@@ -19,14 +22,16 @@ class GitHubAuthService:
 	@property
 	def signing_key(self) -> bytes:
 		"""Lazy load PEM key from environment variable."""
+
 		if self._signing_key is None:
 			key = settings.GITHUB_APP_PRIVATE_KEY.get_secret_value()
 			self._signing_key = key.encode("utf-8")
 
 		return self._signing_key
 
-	def generate_app_signed_jwt(self) -> str:
+	def _generate_app_signed_jwt(self) -> str:
 		"""Generate a JWT for GitHub App authentication."""
+
 		try:
 			current_time = int(time.time())
 			expiration = settings.GITHUB_APP_SIGNED_JWT_TTL
@@ -45,13 +50,14 @@ class GitHubAuthService:
 				"Failed to generate JWT",
 			)
 
-	async def get_access_token(self) -> dict:
+	async def get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
-		cached_token = redis_client.get("github_access_token")
-		if cached_token is not None:
-			return {"token": cached_token}
 
-		jwt_token = self.generate_app_signed_jwt()
+		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
+		if cached_token is not None:
+			return str(cached_token)
+
+		jwt_token = self._generate_app_signed_jwt()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
 			f"https://api.github.com/app/installations/{installation_id}/access_tokens"
@@ -87,9 +93,94 @@ class GitHubAuthService:
 
 			# Cache the token in Redis
 			redis_client.set(
-				"github_access_token",
-				ttl_seconds,
+				GITHUB_ACCESS_TOKEN_KEY,
 				access_token_value,
+				ttl_seconds,
 			)
 
-		return {"token": access_token_value}
+		return access_token_value
+
+
+class GitHubDataService:
+	"""Service for interacting with GitHub API to fetch repository data."""
+
+	def __init__(self):
+		self.auth = GitHubAuthService()
+
+	async def fetch_repository_issues(
+		self,
+		owner_name,
+		repository_name,
+		start_date,
+		end_date,
+		project_board,
+	) -> list[dict]:
+		"""Fetch issues from a GitHub repository within a specific date range.
+
+		Args:
+			owner_name (str): The owner of the repository.
+			repository_name (str): The name of the repository.
+			start_date (str): The start date in ISO 8601 format (YYYY-MM-DD).
+			end_date (str): The end date in ISO 8601 format (YYYY-MM-DD).
+			project_board (str): The name of the project board to filter issues.
+		Returns:
+			list: A list of issues matching the criteria.
+		"""
+		search_query = get_issue_search_query(
+			owner_name,
+			repository_name,
+			start_date,
+			end_date,
+		)
+		query_issues = get_issue_fetch_query(include_comments=True)
+		issues: list[dict] = []
+		issues_pagination_cursor: str | None = None
+		gh_access_token = await self.auth.get_access_token()
+
+		async with httpx.AsyncClient() as client:
+			while True:
+				response = await client.post(
+					str(settings.GITHUB_API_GQL_ENDPOINT),
+					json={
+						"query": query_issues,
+						"variables": {
+							"search_query": search_query,
+							"after": issues_pagination_cursor,
+						},
+					},
+					headers={"Authorization": f"Bearer {gh_access_token}"},
+				)
+
+				if response.status_code != 200:
+					if response.status_code == 401:
+						redis_gh_access_token = redis_client.get(
+							GITHUB_ACCESS_TOKEN_KEY,
+						)
+
+						# If the stored token is invalid, delete it from Redis
+						if redis_gh_access_token == gh_access_token:
+							redis_client.delete(GITHUB_ACCESS_TOKEN_KEY)
+
+						raise AuthenticationError(
+							"""GitHub GraphQL API returned 401 Unauthorized""",
+						)
+
+					raise Exception(
+						f"GitHub API error: {response.status_code} - {response.text}",
+					)
+
+				data = response.json()
+
+				search_data = data.get("data", {}).get("search")
+				if not search_data:
+					break
+
+				issues.extend(search_data.get("nodes", []))
+
+				page_info = search_data.get("pageInfo", {})
+				if not page_info.get("hasNextPage"):
+					break
+
+				issues_pagination_cursor = page_info.get("endCursor")
+
+			return get_processed_issue_list(issues, project_board)
