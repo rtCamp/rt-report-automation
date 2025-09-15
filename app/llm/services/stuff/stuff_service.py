@@ -25,7 +25,7 @@ class StuffService:
 
 		Args:
 			llm: The language model to use
-			prompt_slug: The prompt template
+			prompt_slug: The slug/identifier for the prompt template
 			docs: List of documents to summarize
 
 		"""

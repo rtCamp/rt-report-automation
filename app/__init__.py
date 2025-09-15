@@ -1,1 +1,1 @@
-"""Initialization of slack module."""
+"""Application package initialization."""

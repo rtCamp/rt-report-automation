@@ -30,7 +30,10 @@ dev = ["pyright>=1.1.404", "ruff>=0.12.10"]
 
 [tool.ruff]
 exclude = [".venv", "migrations"]
-lint.ignore = ["W191", "D206"]
+lint.ignore = [
+	"W191", # Ignore indentation with tabs.
+	"D206", # Ignore indentation with tabs in docstrings.
+]
 lint.extend-select = [
 	"D",   # Docstring rules
 	"F",   # Pyflakes rules
