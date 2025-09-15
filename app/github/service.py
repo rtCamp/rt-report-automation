@@ -9,7 +9,7 @@ from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError, InternalServerError
 from app.github.query import get_issue_fetch_query, get_issue_search_query
-from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY, MAX_RETRIES_ATTEMPT
+from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY
 from app.github.utils.helpers import get_processed_issue_list
 
 
@@ -136,7 +136,6 @@ class GitHubDataService:
 		issues: list[dict] = []
 		issues_pagination_cursor: str | None = None
 		gh_access_token = await self.auth.get_access_token()
-		curr_retries = 0  # Counter for 401 responses
 
 		async with httpx.AsyncClient() as client:
 			while True:
@@ -154,21 +153,17 @@ class GitHubDataService:
 
 				if response.status_code != 200:
 					if response.status_code == 401:
-						if curr_retries >= MAX_RETRIES_ATTEMPT:
-							raise AuthenticationError(
-								"""GitHub GraphQL API returned 401 Unauthorized
-								after max retries""",
-							)
-						curr_retries += 1
+						redis_gh_access_token = redis_client.get(
+							GITHUB_ACCESS_TOKEN_KEY,
+						)
 
-						curr_access_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
-
-						if curr_access_token != gh_access_token:
-							gh_access_token = curr_access_token
-						else:
+						# If the stored token is invalid, delete it from Redis
+						if redis_gh_access_token == gh_access_token:
 							redis_client.delete(GITHUB_ACCESS_TOKEN_KEY)
-							gh_access_token = await self.auth.get_access_token()
-						continue
+
+						raise AuthenticationError(
+							"""GitHub GraphQL API returned 401 Unauthorized""",
+						)
 
 					raise Exception(
 						f"GitHub API error: {response.status_code} - {response.text}",
