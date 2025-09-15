@@ -48,13 +48,13 @@ async def fetch_slack(ctx: inngest.Context):
 
 		# Extract slack_metadata and project_metadata.
 		slack_data = event_data.get("slack_metadata")
-		project_metadata = event_data.get("project_metadata")
+		project_data = event_data.get("project_metadata")
 
 		validate(slack_data, dict)
-		validate(project_metadata, dict)
+		validate(project_data, dict)
 
 		slack_metadata = SlackMetadata.model_validate(slack_data)
-		project_metadata = ProjectMetadata.model_validate(project_metadata)
+		project_metadata = ProjectMetadata.model_validate(project_data)
 
 		start_ts = to_unix(project_metadata.start_date)
 		end_ts = to_unix(project_metadata.end_date)
