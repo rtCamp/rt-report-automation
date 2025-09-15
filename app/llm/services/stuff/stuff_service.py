@@ -5,7 +5,7 @@ from langchain_core.documents import Document
 from langchain_core.language_models import BaseLanguageModel
 from langfuse import observe
 
-from app.core.adapters.langfuse import langfuse
+from app.core.adapters.langfuse import langfuse, traced_chain_ainvoke
 from app.llm.models.summarization import ProjectSummarySchema
 from app.llm.prompts.prompt import FORMAT
 
@@ -31,7 +31,7 @@ class StuffService:
 		self.docs = docs
 		self.prompt_slug = prompt_slug
 
-	@observe()
+	@observe(name="stuff_summarize")
 	async def summarize(self) -> str:
 		"""
 		Summarize documents using LangChain's stuff documents chain.
@@ -50,7 +50,8 @@ class StuffService:
 			prompt=prompt,
 		)
 
-		result = await chain.ainvoke(
+		result = await traced_chain_ainvoke(
+			chain,
 			{
 				"context": self.docs,
 				"format_instructions": pydantic_parser.get_format_instructions(),

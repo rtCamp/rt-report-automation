@@ -6,6 +6,7 @@ from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
 from app.llm.inngest import summarization, summarization_workflow
+from app.slack.inngest import fetch_slack
 
 configure_logging(log_level=LogLevels.info)
 
@@ -29,7 +30,7 @@ app.add_middleware(
 register_routes(app)
 
 # Initialize Inngest.
-setup_inngest(app, [summarization_workflow, summarization])
+setup_inngest(app, [summarization_workflow, summarization, fetch_slack])
 
 if __name__ == "__main__":
 	import uvicorn

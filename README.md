@@ -1,4 +1,4 @@
-# 🚀 rt Report Automation
+# 🤖 rt Report Automation
 
 A microservice to automate the generation and distribution of rt reports.
 
@@ -33,11 +33,32 @@ A microservice to automate the generation and distribution of rt reports.
    ```
 
    This will start the FastAPI server on `http://localhost:8000`.
-   The automatic API docs will be available at `http://localhost:8000/docs`.
+   The API docs will be available at `http://localhost:8000/docs`.
 
 ---
 
-## 📦 Local Setup for Inngest
+## 📦 Development Workflow
+
+### 🔍 Setting up pre-commit hooks
+
+To ensure code quality and consistency, pre-commit hooks are set up using the `pre-commit` tool. Follow these steps to set it up:
+
+1. **Install pre-commit**:
+
+   If you haven't installed `pre-commit` yet, you can do so using pip:
+
+   ```bash
+   pip install pre-commit
+   ```
+
+2. **Install the pre-commit hooks**:
+   Run the following command in the root directory of the project:
+
+   ```bash
+   pre-commit install
+   ```
+
+### 🛠️ Local Setup for Inngest
 
 Inngest is used for orchestrating workflows. To learn in detail about its dev server, visit [Inngest Dev Server](https://www.inngest.com/docs/dev-server).
 

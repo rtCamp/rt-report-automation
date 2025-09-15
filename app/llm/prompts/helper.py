@@ -1,8 +1,10 @@
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langfuse import observe
 
-from app.core.adapters import langfuse
+from app.core.adapters.langfuse import langfuse
 
 
+@observe(name="fetch_langfuse_prompt")
 def get_langfuse_prompt(name: str, label: str = "production") -> ChatPromptTemplate:
 	"""Get a ChatPromptTemplate from Langfuse.
 
@@ -14,6 +16,7 @@ def get_langfuse_prompt(name: str, label: str = "production") -> ChatPromptTempl
 		ChatPromptTemplate: The prompt template ready for use
 	"""
 	template = langfuse.get_prompt(name, label=label).get_langchain_prompt()
+
 	return ChatPromptTemplate(
 		messages=[SystemMessagePromptTemplate.from_template(template)],
 	)

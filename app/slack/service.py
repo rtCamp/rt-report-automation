@@ -5,14 +5,11 @@ from datetime import UTC, datetime
 from slack_sdk import WebClient
 
 from app.core.config import settings
+from app.slack.constants import STANDUP_WORKFLOW_NAME
 
 
 class SlackService:
 	"""Service for interacting with Slack API."""
-
-	# TODO(sainathpoojary): https://github.com/rtCamp/rt-report-automation/issues/11
-	# After standarizing the workflow name, update it here.
-	STANDUP_WORKFLOW_NAME = "AI Internal - Daily Tasks Tracker"
 
 	def __init__(self):
 		"""Initialize the SlackService."""
@@ -304,7 +301,7 @@ class SlackService:
 		# Filter messages by the standup workflow
 		messages = self._filter_messages_by_workflow(
 			messages,
-			self.STANDUP_WORKFLOW_NAME,
+			STANDUP_WORKFLOW_NAME,
 		)
 
 		for message in messages:
