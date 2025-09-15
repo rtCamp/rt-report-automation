@@ -22,10 +22,10 @@ from app.slack.service import SlackService
 	),
 )
 async def fetch_slack(ctx: inngest.Context):
-	"""Inngest function to fetch and parse standup messages from Slack.
+	"""Inngest function to fetch standup messages from Slack.
 
 	Retrieves standup messages from a specified Slack channel within a given
-	date range and returns parsed standup data organized by timestamp.
+	date range and returns formatted text with standup data grouped by date.
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
@@ -33,9 +33,8 @@ async def fetch_slack(ctx: inngest.Context):
 			- project_metadata (dict): Project details with start_date and end_date
 
 	Returns:
-		dict[str, list[dict]]: Dictionary where keys are ISO timestamp strings
-			and values are lists of parsed standup dictionaries. Each standup
-			contains 'yesterday', 'today', 'blocker', and 'demo' sections.
+		str: Formatted text with standup messages grouped by date headers.
+			Each section contains the standup text from Slack threads.
 
 	Raises:
 		TypeError: If event data or metadata types don't match expected types.

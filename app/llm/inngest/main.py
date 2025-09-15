@@ -50,8 +50,7 @@ async def summarization_workflow(ctx: inngest.Context) -> str:
 		data=ctx.event.data,
 	)
 
-	# Convert slack_data & github_issues_data to JSON string
-	slack_data = json.dumps(slack_data)
+	# Convert github_issues_data to JSON string
 	github_issues_data = json.dumps(github_issues_data)
 
 	# Prepare data for the summarization step
