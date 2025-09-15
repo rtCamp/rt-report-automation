@@ -30,7 +30,7 @@ class ProjectMetadata(BaseModel):
 
 	project_name: str = Field(
 		description="Name of the project",
-		examples=["AI Internal"],
+		examples=["AI-Internal"],
 		min_length=3,
 		max_length=128,
 	)
@@ -53,7 +53,7 @@ class UserMetadata(BaseModel):
 class GitHubMetadata(BaseModel):
 	repo_name: str = Field(
 		description="Name of the GitHub repository",
-		examples=["rt-report-automation"],
+		examples=["AI-Internal"],
 		min_length=3,
 		max_length=128,
 	)
@@ -68,7 +68,7 @@ class GitHubMetadata(BaseModel):
 
 	project_board: str = Field(
 		description="Name of the project board",
-		examples=["AI Internal"],
+		examples=["AI-Internal"],
 		min_length=3,
 		max_length=128,
 	)

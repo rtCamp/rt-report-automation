@@ -4,7 +4,7 @@ import inngest
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
-from app.core.utils import to_unix, validate
+from app.core.utils import validate
 from app.github.service import GitHubDataService
 from app.github.utils.constants import (
 	GITHUB_API_RATE_LIMIT,
@@ -49,8 +49,8 @@ async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
 		project_metadata = ProjectMetadata.model_validate(project_metadata)
 
 		# Daterange for the GitHub issues
-		start_ts = to_unix(project_metadata.start_date)
-		end_ts = to_unix(project_metadata.end_date)
+		start_ts = project_metadata.start_date.isoformat()
+		end_ts = project_metadata.end_date.isoformat()
 
 		github_service = GitHubDataService()
 
