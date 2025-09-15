@@ -20,8 +20,6 @@ def setup_inngest(app: FastAPI, functions: list[Any] = []):
 		app (FastAPI): The FastAPI application instance.
 		functions (list[Any], optional): List of Inngest functions. Defaults to [].
 
-	Returns:
-		None
 
 	"""
 	inngest.fast_api.serve(app, inngest_client, functions)
