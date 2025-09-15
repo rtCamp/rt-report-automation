@@ -22,7 +22,19 @@ from app.llm.models.summarization import GitHubMetadata, ProjectMetadata
 		period=datetime.timedelta(minutes=1),
 	),
 )
-async def fetch_github_issues(ctx: inngest.Context):
+async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
+	"""
+	Inngest function to fetch GitHub issues for a repository within a given date range.
+
+	Args:
+		ctx (inngest.Context): The Inngest context object, which contains the
+			triggering event data, logging utilities, and metadata for the
+			current function execution.
+
+	Returns:
+		list[dict]: A list of dictionaries, where each dictionary represents
+			a GitHub issue with its metadata
+	"""
 	try:
 		event_data = ctx.event.data
 		validate(event_data, dict)
@@ -42,7 +54,7 @@ async def fetch_github_issues(ctx: inngest.Context):
 
 		github_service = GitHubDataService()
 
-		return github_service.fetch_repository_issues(
+		return await github_service.fetch_repository_issues(
 			github_metadata.owner_name,
 			github_metadata.repo_name,
 			start_ts,
