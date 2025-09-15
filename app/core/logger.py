@@ -1,3 +1,5 @@
+"""Logging configuration module."""
+
 import logging
 from enum import StrEnum
 
@@ -5,6 +7,8 @@ LOG_FORMAT_DEBUG = "%(levelname)s:%(message)s:%(pathname)s:%(funcName)s:%(lineno
 
 
 class LogLevels(StrEnum):
+	"""Enumeration of log levels."""
+
 	info = "INFO"
 	warn = "WARN"
 	error = "ERROR"
@@ -12,6 +16,7 @@ class LogLevels(StrEnum):
 
 
 def configure_logging(log_level: str = LogLevels.error):
+	"""Configure logging for the application."""
 	log_level = str(log_level).upper()
 	log_levels = [level.value for level in LogLevels]
 

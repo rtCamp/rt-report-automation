@@ -1,3 +1,5 @@
+"""Schemas for LLM-based summarization requests and responses."""
+
 import datetime
 from enum import Enum
 
@@ -7,12 +9,16 @@ from app.llm.models import LLMProvider, SupportedModels
 
 
 class ProjectStatus(str, Enum):
+	"""Enumeration of project statuses."""
+
 	GREEN = "Green"
 	YELLOW = "Yellow"
 	RED = "Red"
 
 
 class ProjectMetadata(BaseModel):
+	"""Project metadata schema."""
+
 	start_date: datetime.date = Field(
 		description="Start date of the report",
 		examples=["2025-08-25"],
@@ -37,6 +43,8 @@ class ProjectMetadata(BaseModel):
 
 
 class UserMetadata(BaseModel):
+	"""User metadata schema."""
+
 	user_name: str = Field(
 		description="Name of the user",
 		examples=["anonymous"],
@@ -51,6 +59,8 @@ class UserMetadata(BaseModel):
 
 
 class GitHubMetadata(BaseModel):
+	"""GitHub repository metadata schema."""
+
 	repo_name: str = Field(
 		description="Name of the GitHub repository",
 		examples=["rt-report-automation"],
@@ -75,6 +85,8 @@ class GitHubMetadata(BaseModel):
 
 
 class SlackMetadata(BaseModel):
+	"""Slack workspace metadata schema."""
+
 	channel_slug: str = Field(
 		description="Slack channel slug",
 		examples=["ai"],
@@ -84,6 +96,8 @@ class SlackMetadata(BaseModel):
 
 
 class ModelMetadata(BaseModel):
+	"""LLM model metadata schema."""
+
 	provider: LLMProvider = Field(
 		description="LLM Provider",
 		examples=[LLMProvider.GOOGLE_GENAI],
@@ -106,6 +120,8 @@ class ModelMetadata(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
+	"""Request schema for LLM-based summarization."""
+
 	llm_model_overrides: ModelMetadata
 	project_metadata: ProjectMetadata
 	user_metadata: UserMetadata
@@ -114,6 +130,8 @@ class SummarizeRequest(BaseModel):
 
 
 class SummarizeResponse(BaseModel):
+	"""Response schema for LLM-based summarization."""
+
 	run_ids: list[str] = Field(
 		description="Unique identifier for the summarization run",
 		examples=[["123e4567-e89b-12d3-a456"]],

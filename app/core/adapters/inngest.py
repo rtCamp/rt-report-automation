@@ -1,3 +1,5 @@
+"""Inngest adapter module."""
+
 import logging
 from typing import Any
 
@@ -12,12 +14,12 @@ inngest_client = inngest.Inngest(
 
 
 def setup_inngest(app: FastAPI, functions: list[Any] = []):
-	"""Setup Inngest with the FastAPI application.
+	"""Set up Inngest with FastAPI.
 
 	Args:
 		app (FastAPI): The FastAPI application instance.
+		functions (list[Any], optional): List of Inngest functions. Defaults to [].
 
-	Returns:
-		None
+
 	"""
 	inngest.fast_api.serve(app, inngest_client, functions)

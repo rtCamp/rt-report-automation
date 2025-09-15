@@ -1,3 +1,5 @@
+"""Inngest workflow for LLM-based summarization."""
+
 import json
 
 import inngest
@@ -32,6 +34,7 @@ async def summarization_workflow(ctx: inngest.Context) -> str:
 
 	Raises:
 		Exception: Any errors from the fetch_slack or summarization steps.
+
 	"""
 	slack_data = await ctx.step.invoke(
 		"fetch_slack",

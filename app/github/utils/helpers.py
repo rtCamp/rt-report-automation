@@ -1,16 +1,19 @@
+"""Helper functions for processing GitHub issues and project items."""
+
 from datetime import datetime
 
 from app.github.utils.constants import BLOCKED_ISSUE_STATUS_NAME
 
 
 def format_to_yymmdd(iso_date: str) -> str:
-	"""Formats an ISO 8601 date string to 'YYYY-MM-DD'.
+	"""Format an ISO 8601 date string to 'YYYY-MM-DD'.
 
 	Args:
 		iso_date (str): The date string in ISO 8601 format.
 
 	Returns:
 		str: The formatted date string in 'YYYY-MM-DD' format.
+
 	"""
 	date = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
 
@@ -22,8 +25,7 @@ def format_to_yymmdd(iso_date: str) -> str:
 
 
 def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dict]:
-	"""
-	Filters and processes GitHub issues for a specific project board.
+	"""Filter and process GitHub issues for a specific project board.
 
 	- Keeps only project items belonging to the given project board.
 	- Removes empty status items from project fields.
@@ -37,6 +39,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 
 	Returns:
 		list[dict]: Processed and filtered issues.
+
 	"""
 	processed_issues: list[dict] = []
 
@@ -65,8 +68,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 
 
 def filter_project_items(item: dict, project_board: str) -> list[dict]:
-	"""
-	Filter and return project items associated with a specific project board.
+	"""Filter and return project items associated with a specific project board.
 
 	Args:
 		item (dict): The raw GitHub issue/PR item data containing `projectItems`.
@@ -75,6 +77,7 @@ def filter_project_items(item: dict, project_board: str) -> list[dict]:
 	Returns:
 		list[dict]: A list of filtered project items belonging to the given
 		project board, with cleaned `fieldValues`.
+
 	"""
 	project_items = []
 	for project_item in item.get("projectItems", {}).get("items", []):
@@ -107,8 +110,7 @@ def build_processed_issue_data(
 	project_items: list[dict],
 	is_blocked: bool,
 ) -> dict:
-	"""
-	Build a processed issue dictionary with filtered and reformatted fields.
+	"""Build a processed issue dictionary with filtered and reformatted fields.
 
 	Args:
 		item (dict): The raw GitHub issue data.
@@ -119,6 +121,7 @@ def build_processed_issue_data(
 	Returns:
 		dict: A cleaned and structured issue dictionary containing the
 		processed fields.
+
 	"""
 	# Extract selected properties
 	comments = item.get("comments")

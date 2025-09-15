@@ -1,3 +1,5 @@
+"""Langfuse wrappers for tracing LLM and chain calls."""
+
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -18,7 +20,7 @@ def traced_llm_invoke(
 	input_data: str | list[BaseMessage],
 	**kwargs: Any,
 ) -> Any:
-	"""Wrapper for synchronous LLM calls with Langfuse tracing."""
+	"""Wrap synchronous LLM calls with Langfuse tracing."""
 	return llm.invoke(input_data, config=config, **kwargs)
 
 
@@ -28,7 +30,7 @@ async def traced_llm_ainvoke(
 	input_data: str | list[BaseMessage],
 	**kwargs: Any,
 ) -> Any:
-	"""Wrapper for asynchronous LLM calls with Langfuse tracing."""
+	"""Wrap for asynchronous LLM calls with Langfuse tracing."""
 	return await llm.ainvoke(input_data, config=config, **kwargs)
 
 
@@ -38,5 +40,5 @@ async def traced_chain_ainvoke(
 	input_data: dict[str, Any],
 	**kwargs: Any,
 ) -> Any:
-	"""Wrapper for LangChain chain calls with Langfuse tracing."""
+	"""Wrap for LangChain chain calls with Langfuse tracing."""
 	return await chain.ainvoke(input_data, config=config, **kwargs)

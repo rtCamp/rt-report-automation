@@ -1,3 +1,5 @@
+"""Inngest function for LLM-based summarization using stuff/map-reduce strategy."""
+
 import datetime
 
 import inngest
@@ -37,6 +39,7 @@ async def summarization(ctx: inngest.Context) -> str:
 
 	Returns:
 		str: The final summary.
+
 	"""
 	try:
 		event_data = ctx.event.data

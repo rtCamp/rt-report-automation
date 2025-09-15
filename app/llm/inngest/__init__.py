@@ -1,3 +1,5 @@
+"""Inngest package initialization."""
+
 from app.llm.inngest.main import summarization_workflow
 from app.llm.inngest.summarization import summarization
 

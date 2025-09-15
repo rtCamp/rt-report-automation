@@ -1,3 +1,5 @@
+"""Constants for GitHub integration."""
+
 # GH access token key name on Redis token store
 GITHUB_ACCESS_TOKEN_KEY = "github_access_token"
 
