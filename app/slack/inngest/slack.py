@@ -26,7 +26,7 @@ async def fetch_slack(ctx: inngest.Context):
 	date range and returns parsed standup data organized by timestamp.
 
 	Args:
-		ctx (inngest.Context): The Inngest context containing:
+		ctx (inngest.Context): The Inngest context containing event.data with:
 			- slack_metadata (dict): Slack configuration with channel_slug
 			- project_metadata (dict): Project details with start_date and end_date
 
