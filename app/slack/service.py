@@ -166,6 +166,7 @@ class SlackService:
 
 		Returns:
 			str: Formatted text with standup messages grouped by date.
+
 		"""
 		standups = ""
 		channel_id = self._get_channel_id(channel_name)
@@ -196,6 +197,6 @@ class SlackService:
 			# Add each reply's text (skip first message - workflow trigger)
 			for reply in replies[1:]:
 				if "text" in reply and reply["text"].strip():
-					standups += f"{reply['text']}\n\n"
+					standups += f"{reply['text'].strip()}\n\n"
 
 		return standups
