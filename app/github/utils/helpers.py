@@ -8,6 +8,7 @@ def format_to_yymmdd(iso_date: str) -> str:
 
 	Args:
 		iso_date (str): The date string in ISO 8601 format.
+
 	Returns:
 		str: The formatted date string in 'YYYY-MM-DD' format.
 	"""

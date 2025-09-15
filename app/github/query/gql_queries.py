@@ -1,7 +1,7 @@
 from app.github.utils.helpers import format_to_yymmdd
 
 
-def get_issue_fetch_query(*, include_comments: bool = False) -> str:  # noqa: FBT001, FBT002 By default the issue comments are disabled in this gql query.
+def get_issue_fetch_query(*, include_comments: bool = False) -> str:
 	"""
 	Generates a GraphQL query string to fetch GitHub issues.
 
