@@ -1,3 +1,5 @@
+"""Helper functions for managing prompts."""
+
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langfuse import observe
 
@@ -14,6 +16,7 @@ def get_langfuse_prompt(name: str, label: str = "production") -> ChatPromptTempl
 
 	Returns:
 		ChatPromptTemplate: The prompt template ready for use
+
 	"""
 	template = langfuse.get_prompt(name, label=label).get_langchain_prompt()
 

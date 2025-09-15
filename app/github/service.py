@@ -1,3 +1,5 @@
+"""Service layer for GitHub integration."""
+
 import time
 from datetime import UTC, datetime
 
@@ -17,12 +19,12 @@ class GitHubAuthService:
 	"""Service for generating GitHub App JWT and installation access tokens."""
 
 	def __init__(self):
+		"""Initialize the GitHubAuthService."""
 		self._signing_key: bytes | None = None
 
 	@property
 	def signing_key(self) -> bytes:
 		"""Lazy load PEM key from environment variable."""
-
 		if self._signing_key is None:
 			key = settings.GITHUB_APP_PRIVATE_KEY.get_secret_value()
 			self._signing_key = key.encode("utf-8")
@@ -31,7 +33,6 @@ class GitHubAuthService:
 
 	def _generate_app_signed_jwt(self) -> str:
 		"""Generate a JWT for GitHub App authentication."""
-
 		try:
 			current_time = int(time.time())
 			expiration = settings.GITHUB_APP_SIGNED_JWT_TTL
@@ -52,7 +53,6 @@ class GitHubAuthService:
 
 	async def get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
-
 		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 		if cached_token is not None:
 			return str(cached_token)
@@ -105,6 +105,7 @@ class GitHubDataService:
 	"""Service for interacting with GitHub API to fetch repository data."""
 
 	def __init__(self):
+		"""Initialize the GitHubDataService."""
 		self.auth = GitHubAuthService()
 
 	async def fetch_repository_issues(
@@ -123,8 +124,10 @@ class GitHubDataService:
 			start_date (str): The start date in ISO 8601 format (YYYY-MM-DD).
 			end_date (str): The end date in ISO 8601 format (YYYY-MM-DD).
 			project_board (str): The name of the project board to filter issues.
+
 		Returns:
 			list: A list of issues matching the criteria.
+
 		"""
 		search_query = get_issue_search_query(
 			owner_name,

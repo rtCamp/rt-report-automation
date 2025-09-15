@@ -1,3 +1,5 @@
+"""API route registration module."""
+
 from fastapi import FastAPI
 
 from app.core.config import settings
@@ -6,5 +8,11 @@ from app.llm import llm_router
 
 
 def register_routes(app: FastAPI):
+	"""Register API routes with the FastAPI application.
+
+	Args:
+		app (FastAPI): The FastAPI application instance.
+
+	"""
 	app.include_router(health_router, prefix=settings.API_PREFIX)
 	app.include_router(llm_router, prefix=settings.API_PREFIX)

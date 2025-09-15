@@ -1,3 +1,5 @@
+"""LLM models definitions and configurations."""
+
 from enum import Enum
 
 from pydantic import BaseModel
@@ -7,18 +9,24 @@ DEFAULT_MAX_OUTPUT_TOKENS = 8_000
 
 
 class ModelResponse(BaseModel):
+	"""Response model for LLM model details."""
+
 	name: str
 	context_window: int
 	max_output_tokens: int
 
 
 class LLMProvider(str, Enum):
+	"""Enumeration of supported LLM providers."""
+
 	OPENAI = "openai"
 	GOOGLE_GENAI = "google_genai"
 	ANTHROPIC = "anthropic"
 
 
 class SupportedModels(str, Enum):
+	"""Enumeration of supported LLM models."""
+
 	# OpenAI models
 	GPT_5 = "gpt-5"
 	GPT_5_MINI = "gpt-5-mini"
@@ -47,6 +55,7 @@ class SupportedModels(str, Enum):
 
 		Returns:
 			int: Context window size.
+
 		"""
 		return _MODEL_CONTEXT_WINDOW_MAP.get(self, DEFAULT_CONTEXT_WINDOW)
 
@@ -55,6 +64,7 @@ class SupportedModels(str, Enum):
 
 		Returns:
 			int: Maximum output tokens.
+
 		"""
 		return _MODEL_MAX_OUTPUT_TOKENS_MAP.get(self, DEFAULT_MAX_OUTPUT_TOKENS)
 

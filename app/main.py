@@ -1,3 +1,5 @@
+"""Initialization of the main application."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -1,3 +1,5 @@
+"""Controller for LLM-related operations."""
+
 import inngest
 from fastapi import APIRouter
 from fastapi.logger import logger
@@ -24,6 +26,7 @@ router = APIRouter(
 	response_model=list[ModelResponse],
 )
 def list_supported_models():
+	"""List all supported LLM models."""
 	return [
 		ModelResponse(
 			name=model.value,
@@ -41,6 +44,7 @@ def list_supported_models():
 	response_model=SummarizeResponse,
 )
 async def summarize_text(request: SummarizeRequest):
+	"""Trigger a summarization job with the provided data."""
 	try:
 		ids = await inngest_client.send(
 			inngest.Event(
