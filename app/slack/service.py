@@ -23,7 +23,7 @@ class SlackService:
 		try:
 			response = self.client.auth_test()
 			if not response["ok"]:
-				error = response.get('error', 'Unknown error')
+				error = response.get("error", "Unknown error")
 				raise ValueError(f"Invalid Slack bot token: {error}")
 		except SlackApiError as e:
 			raise ValueError(f"Slack API error: {e.response['error']}")
