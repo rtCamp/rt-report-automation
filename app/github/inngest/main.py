@@ -1,3 +1,5 @@
+"""Inngest functions for GitHub integration."""
+
 import datetime
 
 import inngest
@@ -23,8 +25,7 @@ from app.llm.models.summarization import GitHubMetadata, ProjectMetadata
 	),
 )
 async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
-	"""
-	Inngest function to fetch GitHub issues for a repository within a given date range.
+	"""Inngest function to fetch GitHub issues within a given date range.
 
 	Args:
 		ctx (inngest.Context): The Inngest context object, which contains the
@@ -34,6 +35,7 @@ async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
 	Returns:
 		list[dict]: A list of dictionaries, where each dictionary represents
 			a GitHub issue with its metadata
+
 	"""
 	try:
 		event_data = ctx.event.data

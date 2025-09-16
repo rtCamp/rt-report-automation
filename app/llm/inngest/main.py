@@ -16,11 +16,11 @@ from app.slack.inngest import fetch_slack
 	retries=2,
 )
 async def summarization_workflow(ctx: inngest.Context) -> str:
-	"""Inngest workflow function to fetch Slack, GitHub data and generate summaries.
+	"""Inngest workflow function to fetch Slack and GitHub data to generate summaries.
 
 	Orchestrates a two-step workflow:
 	1. Fetches standup messages from Slack using the fetch_slack function
-	2. Fetches github issues from Selected repo using the fetch_github_issues function
+	2. Fetches GitHub issues using the fetch_github_issues function
 	3. Summarizes the fetched data using LLM-based summarization
 
 	Args:
