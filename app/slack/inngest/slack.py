@@ -50,9 +50,6 @@ async def fetch_slack(ctx: inngest.Context):
 		slack_data = event_data.get("slack_metadata")
 		project_data = event_data.get("project_metadata")
 
-		validate(slack_data, dict)
-		validate(project_data, dict)
-
 		slack_metadata = SlackMetadata.model_validate(slack_data)
 		project_metadata = ProjectMetadata.model_validate(project_data)
 
