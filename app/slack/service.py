@@ -17,6 +17,19 @@ class SlackService:
 		self.client = WebClient(token=settings.SLACK_BOT_TOKEN.get_secret_value())
 		self.logger = logging.getLogger(__name__)
 
+		# Validate token on initialization
+		self._validate_token()
+
+	def _validate_token(self) -> None:
+		"""Validate the Slack bot token by making a test API call."""
+		try:
+			response = self.client.auth_test()
+			if not response["ok"]:
+				error = response.get('error', 'Unknown error')
+				raise ValueError(f"Invalid Slack bot token: {error}")
+		except Exception as e:
+			raise ValueError(f"Failed to validate Slack bot token: {str(e)}")
+
 	def _get_channel_id(self, channel_name: str) -> str | None:
 		"""Get the ID of a Slack channel by its name.
 
