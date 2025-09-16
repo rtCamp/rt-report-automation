@@ -26,7 +26,9 @@ class SlackService:
 				error = response.get("error", "Unknown error")
 				raise ValueError(f"Invalid Slack bot token: {error}")
 		except SlackApiError as e:
-			raise ValueError(f"Slack API error: {e.response['error']}")
+			raise ValueError(
+				f"Slack API error: {e.response.get('error', 'Unknown API error')}",
+			)
 		except Exception as e:
 			raise ValueError(f"Failed to validate Slack bot token: {str(e)}")
 
