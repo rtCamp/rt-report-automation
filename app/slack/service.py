@@ -3,6 +3,7 @@ import re
 from datetime import UTC, datetime
 
 from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 from app.core.config import settings
 from app.slack.constants import STANDUP_WORKFLOW_NAME
@@ -17,9 +18,6 @@ class SlackService:
 		self.client = WebClient(token=settings.SLACK_BOT_TOKEN.get_secret_value())
 		self.logger = logging.getLogger(__name__)
 
-		# Validate token on initialization
-		self._validate_token()
-
 	def _validate_token(self) -> None:
 		"""Validate the Slack bot token by making a test API call."""
 		try:
@@ -27,6 +25,8 @@ class SlackService:
 			if not response["ok"]:
 				error = response.get('error', 'Unknown error')
 				raise ValueError(f"Invalid Slack bot token: {error}")
+		except SlackApiError as e:
+			raise ValueError(f"Slack API error: {e.response['error']}")
 		except Exception as e:
 			raise ValueError(f"Failed to validate Slack bot token: {str(e)}")
 
@@ -301,6 +301,8 @@ class SlackService:
 				and values are lists of parsed standup dictionaries. Each standup dict
 				contains 'yesterday', 'today', 'blocker', 'demo', and 'text' keys.
 		"""
+		self._validate_token()
+
 		standups = {}
 		channel_id = self._get_channel_id(channel_name)
 
