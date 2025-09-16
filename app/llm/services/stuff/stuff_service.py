@@ -1,3 +1,5 @@
+"""Service for summarizing documents using LangChain's stuff documents chain."""
+
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
@@ -19,13 +21,13 @@ class StuffService:
 		docs: list[Document],
 		prompt_slug: str = "ai-summary-poc",
 	):
-		"""
-		Initialize the StuffService.
+		"""Initialize the StuffService.
 
 		Args:
 			llm: The language model to use
-			prompt: The prompt template
+			prompt_slug: The slug/identifier for the prompt template
 			docs: List of documents to summarize
+
 		"""
 		self.llm = llm
 		self.docs = docs
@@ -33,11 +35,11 @@ class StuffService:
 
 	@observe(name="stuff_summarize")
 	async def summarize(self) -> str:
-		"""
-		Summarize documents using LangChain's stuff documents chain.
+		"""Summarize documents using LangChain's stuff documents chain.
 
 		Returns:
 			str: JSON string containing the summarized project data
+
 		"""
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
 

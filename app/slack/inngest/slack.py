@@ -1,3 +1,5 @@
+"""Inngest functions for Slack integration."""
+
 import datetime
 
 import inngest
@@ -20,10 +22,10 @@ from app.slack.service import SlackService
 	),
 )
 async def fetch_slack(ctx: inngest.Context):
-	"""Inngest function to fetch and parse standup messages from Slack.
+	"""Inngest function to fetch standup messages from Slack.
 
 	Retrieves standup messages from a specified Slack channel within a given
-	date range and returns parsed standup data organized by timestamp.
+	date range and returns formatted text with standup data grouped by date.
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
@@ -31,14 +33,14 @@ async def fetch_slack(ctx: inngest.Context):
 			- project_metadata (dict): Project details with start_date and end_date
 
 	Returns:
-		dict[str, list[dict]]: Dictionary where keys are ISO timestamp strings
-			and values are lists of parsed standup dictionaries. Each standup
-			contains 'yesterday', 'today', 'blocker', and 'demo' sections.
+		str: Formatted text with standup messages grouped by date headers.
+			Each section contains the standup text from Slack threads.
 
 	Raises:
 		TypeError: If event data or metadata types don't match expected types.
 		ValueError: If validation fails for metadata or required fields are missing.
 		Exception: For any other errors during Slack data fetching.
+
 	"""
 	try:
 		event_data = ctx.event.data
@@ -46,13 +48,10 @@ async def fetch_slack(ctx: inngest.Context):
 
 		# Extract slack_metadata and project_metadata.
 		slack_data = event_data.get("slack_metadata")
-		project_metadata = event_data.get("project_metadata")
-
-		validate(slack_data, dict)
-		validate(project_metadata, dict)
+		project_data = event_data.get("project_metadata")
 
 		slack_metadata = SlackMetadata.model_validate(slack_data)
-		project_metadata = ProjectMetadata.model_validate(project_metadata)
+		project_metadata = ProjectMetadata.model_validate(project_data)
 
 		start_ts = to_unix(project_metadata.start_date)
 		end_ts = to_unix(project_metadata.end_date)

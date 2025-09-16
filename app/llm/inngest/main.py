@@ -1,8 +1,11 @@
+"""Inngest workflow for LLM-based summarization."""
+
 import json
 
 import inngest
 
 from app.core.adapters import inngest_client
+from app.github.inngest import fetch_github_issues
 from app.llm.inngest.summarization import summarization
 from app.slack.inngest import fetch_slack
 
@@ -13,11 +16,12 @@ from app.slack.inngest import fetch_slack
 	retries=2,
 )
 async def summarization_workflow(ctx: inngest.Context) -> str:
-	"""Inngest workflow function to fetch Slack data and generate summaries.
+	"""Inngest workflow function to fetch Slack and GitHub data to generate summaries.
 
-	Orchestrates a two-step workflow:
+	Orchestrates a three-step workflow:
 	1. Fetches standup messages from Slack using the fetch_slack function
-	2. Summarizes the fetched data using LLM-based summarization
+	2. Fetches GitHub issues using the fetch_github_issues function
+	3. Summarizes the fetched data using LLM-based summarization
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing SummarizeRequest data:
@@ -32,19 +36,29 @@ async def summarization_workflow(ctx: inngest.Context) -> str:
 
 	Raises:
 		Exception: Any errors from the fetch_slack or summarization steps.
+
 	"""
-	slack_data = await ctx.step.invoke(
-		"fetch_slack",
-		function=fetch_slack,
-		data=ctx.event.data,
+	(slack_data, github_issues_data) = await ctx.group.parallel(
+		(
+			lambda: ctx.step.invoke(
+				"fetch_slack",
+				function=fetch_slack,
+				data=ctx.event.data,
+			),
+			lambda: ctx.step.invoke(
+				"fetch_github_issues",
+				function=fetch_github_issues,
+				data=ctx.event.data,
+			),
+		),
 	)
 
-	# Convert slack_data to JSON string
-	slack_data = json.dumps(slack_data)
+	# Convert github_issues_data to JSON string
+	github_issues_data = json.dumps(github_issues_data)
 
 	# Prepare data for the summarization step
 	data = dict(ctx.event.data)
-	data["data"] = [slack_data]
+	data["data"] = [slack_data, github_issues_data]
 
 	return await ctx.step.invoke(
 		"invoke",

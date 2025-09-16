@@ -1,3 +1,5 @@
+"""Authentication service layer for GitHub integration."""
+
 import time
 from datetime import UTC, datetime
 
@@ -8,12 +10,14 @@ from fastapi import HTTPException
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import InternalServerError
+from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY
 
 
 class GitHubAuthService:
 	"""Service for generating GitHub App JWT and installation access tokens."""
 
 	def __init__(self):
+		"""Initialize the GitHubAuthService."""
 		self._signing_key: bytes | None = None
 
 	@property
@@ -25,7 +29,7 @@ class GitHubAuthService:
 
 		return self._signing_key
 
-	def generate_app_signed_jwt(self) -> str:
+	def _generate_app_signed_jwt(self) -> str:
 		"""Generate a JWT for GitHub App authentication."""
 		try:
 			current_time = int(time.time())
@@ -45,13 +49,13 @@ class GitHubAuthService:
 				"Failed to generate JWT",
 			)
 
-	async def get_access_token(self) -> dict:
+	async def get_access_token(self) -> str:
 		"""Exchange JWT for a GitHub App installation access token."""
-		cached_token = redis_client.get("github_access_token")
+		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 		if cached_token is not None:
-			return {"token": cached_token}
+			return str(cached_token)
 
-		jwt_token = self.generate_app_signed_jwt()
+		jwt_token = self._generate_app_signed_jwt()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
 			f"https://api.github.com/app/installations/{installation_id}/access_tokens"
@@ -87,9 +91,9 @@ class GitHubAuthService:
 
 			# Cache the token in Redis
 			redis_client.set(
-				"github_access_token",
-				ttl_seconds,
+				GITHUB_ACCESS_TOKEN_KEY,
 				access_token_value,
+				ttl_seconds,
 			)
 
-		return {"token": access_token_value}
+		return access_token_value

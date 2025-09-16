@@ -1,0 +1,76 @@
+"""Inngest functions for GitHub integration."""
+
+import datetime
+
+import inngest
+from pydantic import ValidationError
+
+from app.core.adapters import inngest_client
+from app.core.utils import validate
+from app.github.services import GitHubDataService
+from app.github.utils.constants import (
+	GITHUB_API_RATE_LIMIT,
+	GITHUB_SERVICE_FAILURE_MAX_RETRY_LIMIT,
+)
+from app.llm.models.summarization import GitHubMetadata, ProjectMetadata
+
+
+@inngest_client.create_function(
+	fn_id="fetch_github_issues",
+	trigger=inngest.TriggerEvent(event="rt-report-automation/fetch_github_issues"),
+	retries=GITHUB_SERVICE_FAILURE_MAX_RETRY_LIMIT,
+	throttle=inngest.Throttle(
+		limit=GITHUB_API_RATE_LIMIT,
+		period=datetime.timedelta(minutes=1),
+	),
+)
+async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
+	"""Inngest function to fetch GitHub issues within a given date range.
+
+	Args:
+		ctx (inngest.Context): The Inngest context object, which contains the
+			triggering event data, logging utilities, and metadata for the
+			current function execution.
+
+	Returns:
+		list[dict]: A list of dictionaries, where each dictionary represents
+			a GitHub issue with its metadata
+
+	Raises:
+		TypeError: If event data or metadata types don't match expected types.
+		ValueError: If validation fails for metadata or required fields are missing.
+		Exception: For any other errors during GitHub data fetching.
+
+	"""
+	try:
+		event_data = ctx.event.data
+		validate(event_data, dict)
+
+		github_data = event_data.get("github_metadata")
+		project_metadata = event_data.get("project_metadata")
+
+		github_metadata = GitHubMetadata.model_validate(github_data)
+		project_metadata = ProjectMetadata.model_validate(project_metadata)
+
+		# Daterange for the GitHub issues
+		start_ts = project_metadata.start_date.isoformat()
+		end_ts = project_metadata.end_date.isoformat()
+
+		github_service = GitHubDataService()
+
+		return await github_service.fetch_repository_issues(
+			github_metadata.owner_name,
+			github_metadata.repo_name,
+			start_ts,
+			end_ts,
+			github_metadata.project_board,
+		)
+	except ValidationError as e:
+		ctx.logger.error(f"Validation error for GithubMetadata/ProjectMetadata: {e}")
+		raise ValueError(f"Validation error: {e}")
+	except KeyError as e:
+		ctx.logger.error(f"Missing required field in event data: {e}")
+		raise ValueError(f"Missing required field: {e}")
+	except Exception as e:
+		ctx.logger.error(f"Error in fetch_github: {e}")
+		raise

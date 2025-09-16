@@ -1,3 +1,5 @@
+"""Utility functions for the application."""
+
 import datetime
 import time
 from typing import Any, TypeGuard, TypeVar
@@ -6,8 +8,8 @@ T = TypeVar("T")
 
 
 def to_unix(dt):
-	"""
-	Convert a datetime.date or datetime.datetime object to a Unix timestamp (int).
+	"""Convert a datetime.date or datetime.datetime object to a Unix timestamp (int).
+
 	If already an int, returns as is.
 	"""
 	if isinstance(dt, datetime.date):
@@ -16,8 +18,8 @@ def to_unix(dt):
 
 
 def validate(data: Any, type_: type[T] | tuple[type, ...]) -> TypeGuard[T]:
-	"""
-	Validate that `data` is of the given type (or tuple of types).
+	"""Validate that `data` is of the given type (or tuple of types).
+
 	- Raises TypeError if not.
 	- Narrows type for static checkers (Pylance/MyPy).
 	"""

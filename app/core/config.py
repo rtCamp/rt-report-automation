@@ -1,11 +1,12 @@
+"""Application configuration settings."""
+
 from dotenv import load_dotenv
 from pydantic import HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-	"""
-	Application settings.
+	"""Application settings.
 
 	Loads settings from environment variables or a .env file. If not found,
 	default values are used where specified.
@@ -55,10 +56,12 @@ class Settings(BaseSettings):
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
+		"""Parse comma-separated origins into a list."""
 		return v.split(",") if v else []
 
 	@model_validator(mode="after")
 	def validate_required_secrets(self):
+		"""Ensure required secret settings are provided and not empty."""
 		if not self.APP_API_KEY.get_secret_value().strip():
 			raise ValueError("APP_API_KEY must be set and cannot be empty")
 
@@ -68,6 +71,8 @@ class Settings(BaseSettings):
 		return self
 
 	class Config:
+		"""Pydantic configuration for environment variable loading."""
+
 		env_file = ".env"
 		env_file_encoding = "utf-8"
 		case_sensitive = True

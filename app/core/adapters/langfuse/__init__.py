@@ -1,3 +1,5 @@
+"""Langfuse adapter module."""
+
 from app.core.adapters.langfuse.langfuse import langfuse
 from app.core.adapters.langfuse.langfuse_wrappers import (
 	traced_chain_ainvoke,

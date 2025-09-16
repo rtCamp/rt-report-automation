@@ -1,3 +1,5 @@
+"""Initialization of the main application."""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,6 +7,7 @@ from app.core.adapters import setup_inngest
 from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
+from app.github.inngest import fetch_github_issues
 from app.llm.inngest import summarization, summarization_workflow
 from app.slack.inngest import fetch_slack
 
@@ -30,7 +33,10 @@ app.add_middleware(
 register_routes(app)
 
 # Initialize Inngest.
-setup_inngest(app, [summarization_workflow, summarization, fetch_slack])
+setup_inngest(
+	app,
+	[summarization_workflow, summarization, fetch_slack, fetch_github_issues],
+)
 
 if __name__ == "__main__":
 	import uvicorn

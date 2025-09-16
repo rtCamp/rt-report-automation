@@ -1,3 +1,5 @@
+"""Redis adapter module."""
+
 from redis import Redis
 from redis.exceptions import AuthenticationError, ConnectionError
 
@@ -6,9 +8,11 @@ from app.core.exceptions import InternalServerError
 
 
 def get_redis_client() -> Redis:
-	"""
-	Creates and verifies a connection to the Redis server.
-	Returns a client instance on success, otherwise None.
+	"""Get a Redis client instance.
+
+	Returns:
+		Redis: A connected Redis client instance.
+
 	"""
 	try:
 		client = Redis(
@@ -16,6 +20,7 @@ def get_redis_client() -> Redis:
 			port=settings.REDIS_PORT,
 			db=0,
 			password=settings.REDIS_PASSWORD.get_secret_value() or None,
+			decode_responses=True,
 		)
 		client.ping()
 		return client

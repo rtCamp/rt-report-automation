@@ -1,3 +1,5 @@
+"""States used in the map-reduce summarization process."""
+
 import operator
 from typing import Annotated, TypedDict
 
