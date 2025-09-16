@@ -1,3 +1,5 @@
+"""Map-reduce style summarization service using LangChain and LangGraph."""
+
 import json
 from typing import Any, Literal
 
@@ -48,6 +50,7 @@ class MapReduceSummarizationService:
 
 		Returns:
 			int: Number of tokens.
+
 		"""
 		return sum(self.llm.get_num_tokens(doc.page_content) for doc in documents)
 
@@ -165,7 +168,6 @@ class MapReduceSummarizationService:
 	@observe(name="map_reduce_summarize")
 	async def summarize(self):
 		"""Summarize the given contents."""
-
 		# Nodes:
 		graph = StateGraph(OverallState)
 		graph.add_node("generate_summary", self.generate_summary)

@@ -1,3 +1,5 @@
+"""Service for interacting with Slack API."""
+
 import logging
 import re
 from datetime import UTC, datetime
@@ -13,7 +15,6 @@ class SlackService:
 
 	def __init__(self):
 		"""Initialize the SlackService."""
-
 		self.client = WebClient(token=settings.SLACK_BOT_TOKEN.get_secret_value())
 		self.logger = logging.getLogger(__name__)
 
@@ -25,8 +26,8 @@ class SlackService:
 
 		Returns:
 			str | None: The ID of the Slack channel, or None if not found.
-		"""
 
+		"""
 		try:
 			response = self.client.users_conversations()
 
@@ -59,8 +60,8 @@ class SlackService:
 
 		Returns:
 			list[dict]: A list of messages from the channel.
-		"""
 
+		"""
 		messages = []
 		cursor = None
 		try:
@@ -100,8 +101,8 @@ class SlackService:
 
 		Returns:
 			list[dict]: A list of messages that are part of the specified workflow.
-		"""
 
+		"""
 		filtered_messages = []
 		for message in messages:
 			if (
@@ -122,8 +123,8 @@ class SlackService:
 
 		Returns:
 			list[dict]: A list of messages in the thread.
-		"""
 
+		"""
 		messages = []
 		cursor = None
 		try:
@@ -160,6 +161,7 @@ class SlackService:
 		Returns:
 			dict: Parsed standup data with yesterday, today,
 				blocker, and demo sections.
+
 		"""
 		try:
 			standup_text = message.get("text", "")
@@ -260,6 +262,7 @@ class SlackService:
 
 		Returns:
 			list[dict]: A list of parsed standup data.
+
 		"""
 		parsed_standups = []
 
@@ -287,6 +290,7 @@ class SlackService:
 			dict[str, list[dict]]: A dictionary where keys are ISO timestamp strings
 				and values are lists of parsed standup dictionaries. Each standup dict
 				contains 'yesterday', 'today', 'blocker', 'demo', and 'text' keys.
+
 		"""
 		standups = {}
 		channel_id = self._get_channel_id(channel_name)

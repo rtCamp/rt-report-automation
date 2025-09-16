@@ -1,9 +1,10 @@
+"""GraphQL queries for GitHub issues."""
+
 from app.github.utils.helpers import format_to_yymmdd
 
 
 def get_issue_fetch_query(*, include_comments: bool = False) -> str:
-	"""
-	Generates a GraphQL query string to fetch GitHub issues.
+	"""Generate a GraphQL query string to fetch GitHub issues.
 
 	Args:
 		include_comments (bool): If True, the query will fetch the first 100 comments.
@@ -11,6 +12,7 @@ def get_issue_fetch_query(*, include_comments: bool = False) -> str:
 
 	Returns:
 		str: A GraphQL query string.
+
 	"""
 	comments_fragment = (
 		"""
@@ -107,8 +109,7 @@ def get_issue_search_query(
 	start_date: str,
 	end_date: str,
 ) -> str:
-	"""
-	Generate a GitHub issue search query string for GraphQL.
+	"""Generate a GitHub issue search query string for GraphQL.
 
 	Builds a search query that targets issues in a specific repository
 	and filters them by their `updated` date range.
@@ -121,8 +122,8 @@ def get_issue_search_query(
 
 	Returns:
 		str: A formatted GitHub issue search query string.
-	"""
 
+	"""
 	query = "repo:{owner}/{repo} is:issue updated:{start_date}..{end_date}"
 	return query.format(
 		owner=owner,

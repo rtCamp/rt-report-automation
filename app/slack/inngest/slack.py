@@ -1,3 +1,5 @@
+"""Inngest functions for Slack integration."""
+
 import datetime
 
 import inngest
@@ -39,6 +41,7 @@ async def fetch_slack(ctx: inngest.Context):
 		TypeError: If event data or metadata types don't match expected types.
 		ValueError: If validation fails for metadata or required fields are missing.
 		Exception: For any other errors during Slack data fetching.
+
 	"""
 	try:
 		event_data = ctx.event.data

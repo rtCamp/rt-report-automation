@@ -1,3 +1,5 @@
+"""Prompt definitions for LLM interactions."""
+
 FORMAT = """
 {{
     "summary": "A concise narrative summary of the project's current state, key accomplishments, and overall progress. This should be 2 to 3 short paragraphs with no more than 350 words. Focus only on the most important deliverables, milestones, and current priorities.\\n\\nUse proper paragraph breaks between sections for readability.",
