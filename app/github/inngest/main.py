@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
 from app.core.utils import validate
-from app.github.service import GitHubDataService
+from app.github.services import GitHubDataService
 from app.github.utils.constants import (
 	GITHUB_API_RATE_LIMIT,
 	GITHUB_SERVICE_FAILURE_MAX_RETRY_LIMIT,
