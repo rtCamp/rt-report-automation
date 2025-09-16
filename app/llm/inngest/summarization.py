@@ -40,21 +40,22 @@ async def summarization(ctx: inngest.Context) -> str:
 	Returns:
 		str: The final summary.
 
+	Raises:
+		ValueError: If validation fails or required fields are missing.
+		Exception: For any other errors during processing.
+
 	"""
 	try:
 		event_data = ctx.event.data
-		validate(event_data, dict)
 
 		# Extract llm_model_overrides and data.
-		llm_model_data = event_data.get("llm_model_overrides")
+		llm_model_data = event_data.get("llm_model_overrides", {})
 		docs_data = event_data.get("data", [])
-
-		validate(llm_model_data, (dict, type(None)))
 
 		if not validate(docs_data, list):
 			raise
 
-		for i, content in enumerate(docs_data):
+		for content in docs_data:
 			validate(content, str)
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
