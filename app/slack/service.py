@@ -18,33 +18,6 @@ class SlackService:
 		self.client = WebClient(token=settings.SLACK_BOT_TOKEN.get_secret_value())
 		self.logger = logging.getLogger(__name__)
 
-	def _validate_token(self) -> None:
-		"""Validate the Slack bot token by making a test API call.
-
-		Makes an auth_test API call to verify that the provided Slack bot token
-		is valid and has the necessary permissions to access the Slack API.
-
-		Raises:
-			ValueError: If the token is invalid, the API call fails, or any other
-				error occurs during validation. The error message will include:
-				- "Invalid Slack bot token: {error}" for authentication failures
-				- "Slack API error: {error}" for Slack API-specific errors
-				- "Failed to validate Slack bot token: {error}" for other exceptions
-		"""
-		try:
-			response = self.client.auth_test()
-			if response["ok"]:
-				return
-
-			error = response.get("error", "Unknown error")
-			raise ValueError(f"Invalid Slack bot token: {error}")
-		except SlackApiError as e:
-			raise ValueError(
-				f"Slack API error: {e.response.get('error', 'Unknown API error')}",
-			)
-		except Exception as e:
-			raise ValueError(f"Failed to validate Slack bot token: {str(e)}")
-
 	def _get_channel_id(self, channel_name: str) -> str | None:
 		"""Get the ID of a Slack channel by its name.
 
@@ -70,6 +43,7 @@ class SlackService:
 
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching channels: {e}")
+			raise
 		return None
 
 	def _get_messages(
@@ -113,6 +87,7 @@ class SlackService:
 
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching messages: {e}")
+			raise
 		return messages
 
 	def _filter_messages_by_workflow(
@@ -177,6 +152,7 @@ class SlackService:
 
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching thread messages: {e}")
+			raise
 		return messages
 
 	def _parse_standup_message(self, message: dict) -> dict | None:
@@ -316,8 +292,6 @@ class SlackService:
 				and values are lists of parsed standup dictionaries. Each standup dict
 				contains 'yesterday', 'today', 'blocker', 'demo', and 'text' keys.
 		"""
-		self._validate_token()
-
 		standups = {}
 		channel_id = self._get_channel_id(channel_name)
 
