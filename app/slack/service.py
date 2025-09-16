@@ -4,7 +4,6 @@ import logging
 from datetime import UTC, datetime
 
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 from app.core.config import settings
 from app.slack.constants import STANDUP_WORKFLOW_NAME
