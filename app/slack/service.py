@@ -42,6 +42,7 @@ class SlackService:
 
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching channels: {e}")
+			raise
 		return None
 
 	def _get_messages(
@@ -85,6 +86,7 @@ class SlackService:
 
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching messages: {e}")
+			raise
 		return messages
 
 	def _filter_messages_by_workflow(
@@ -149,6 +151,7 @@ class SlackService:
 
 		except Exception as e:
 			self.logger.error(f"Exception occurred while fetching thread messages: {e}")
+			raise
 		return messages
 
 	def get_standups(
