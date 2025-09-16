@@ -38,16 +38,19 @@ async def summarization_workflow(ctx: inngest.Context) -> str:
 		Exception: Any errors from the fetch_slack or summarization steps.
 
 	"""
-	slack_data = await ctx.step.invoke(
-		"fetch_slack",
-		function=fetch_slack,
-		data=ctx.event.data,
-	)
-
-	github_issues_data = await ctx.step.invoke(
-		"fetch_github_issues",
-		function=fetch_github_issues,
-		data=ctx.event.data,
+	(slack_data, github_issues_data) = await ctx.group.parallel(
+		(
+			lambda: ctx.step.invoke(
+				"fetch_slack",
+				function=fetch_slack,
+				data=ctx.event.data,
+			),
+			lambda: ctx.step.invoke(
+				"fetch_github_issues",
+				function=fetch_github_issues,
+				data=ctx.event.data,
+			),
+		),
 	)
 
 	# Convert github_issues_data to JSON string
