@@ -6,7 +6,7 @@ from app.core.adapters import redis_client
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 from app.github.query import get_issue_fetch_query, get_issue_search_query
-from app.github.services import GitHubAuthService
+from app.github.services.github_auth import GitHubAuthService
 from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY
 from app.github.utils.helpers import get_processed_issue_list
 
