@@ -168,12 +168,12 @@ class SlackService:
 			str: Formatted text with standup messages grouped by date.
 
 		"""
-		standups = ""
+		standup_parts = []
 		channel_id = self._get_channel_id(channel_name)
 
 		if not channel_id:
 			self.logger.warning(f"Channel not found: {channel_name}")
-			return standups
+			return ""
 
 		# Fetch messages from the channel
 		messages = self._get_messages(channel_id, start_time, end_time)
@@ -192,11 +192,11 @@ class SlackService:
 			).strftime("%B %d, %Y at %I:%M %p UTC")
 
 			# Add timestamp header
-			standups += f"## {standup_date}\n\n"
+			standup_parts.append(f"## {standup_date}\n\n")
 
 			# Add each reply's text (skip first message - workflow trigger)
 			for reply in replies[1:]:
 				if "text" in reply and reply["text"].strip():
-					standups += f"{reply['text'].strip()}\n\n"
+					standup_parts.append(f"{reply['text'].strip()}\n\n")
 
-		return standups
+		return "".join(standup_parts)
