@@ -36,6 +36,11 @@ async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
 		list[dict]: A list of dictionaries, where each dictionary represents
 			a GitHub issue with its metadata
 
+	Raises:
+		TypeError: If event data or metadata types don't match expected types.
+		ValueError: If validation fails for metadata or required fields are missing.
+		Exception: For any other errors during GitHub data fetching.
+
 	"""
 	try:
 		event_data = ctx.event.data
@@ -43,9 +48,6 @@ async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
 
 		github_data = event_data.get("github_metadata")
 		project_metadata = event_data.get("project_metadata")
-
-		validate(github_data, dict)
-		validate(project_metadata, dict)
 
 		github_metadata = GitHubMetadata.model_validate(github_data)
 		project_metadata = ProjectMetadata.model_validate(project_metadata)
