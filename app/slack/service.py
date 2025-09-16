@@ -19,12 +19,25 @@ class SlackService:
 		self.logger = logging.getLogger(__name__)
 
 	def _validate_token(self) -> None:
-		"""Validate the Slack bot token by making a test API call."""
+		"""Validate the Slack bot token by making a test API call.
+
+		Makes an auth_test API call to verify that the provided Slack bot token
+		is valid and has the necessary permissions to access the Slack API.
+
+		Raises:
+			ValueError: If the token is invalid, the API call fails, or any other
+				error occurs during validation. The error message will include:
+				- "Invalid Slack bot token: {error}" for authentication failures
+				- "Slack API error: {error}" for Slack API-specific errors
+				- "Failed to validate Slack bot token: {error}" for other exceptions
+		"""
 		try:
 			response = self.client.auth_test()
-			if not response["ok"]:
-				error = response.get("error", "Unknown error")
-				raise ValueError(f"Invalid Slack bot token: {error}")
+			if response["ok"]:
+				return
+
+			error = response.get("error", "Unknown error")
+			raise ValueError(f"Invalid Slack bot token: {error}")
 		except SlackApiError as e:
 			raise ValueError(
 				f"Slack API error: {e.response.get('error', 'Unknown API error')}",
