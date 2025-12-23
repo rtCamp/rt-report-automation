@@ -94,6 +94,14 @@ class SlackMetadata(BaseModel):
 		max_length=128,
 	)
 
+	workflow_name: str | None = Field(
+		description="Optional workflow name override. If not provided, will be generated as '{project_name} - Daily Tasks Tracker'",
+		examples=["rtCamp - Daily Tasks Tracker"],
+		default=None,
+		min_length=3,
+		max_length=256,
+	)
+
 
 class ModelMetadata(BaseModel):
 	"""LLM model metadata schema."""

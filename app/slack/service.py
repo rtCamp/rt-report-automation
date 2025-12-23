@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from slack_sdk import WebClient
 
 from app.core.config import settings
-from app.slack.constants import STANDUP_WORKFLOW_NAME
 
 
 class SlackService:
@@ -105,12 +104,11 @@ class SlackService:
 
 		"""
 		filtered_messages = []
+		target = workflow_name.strip().lower()
+
 		for message in messages:
-			if (
-				"bot_id" in message
-				and "username" in message
-				and message["username"] == workflow_name
-			):
+			username = str(message.get("username", "")).strip().lower()
+			if "bot_id" in message and username == target:
 				filtered_messages.append(message)
 
 		return filtered_messages
@@ -159,6 +157,7 @@ class SlackService:
 		channel_name: str,
 		start_time: int,
 		end_time: int,
+		workflow_name: str,
 	) -> str:
 		"""Fetch standup messages from a Slack channel and return as formatted text.
 
@@ -166,6 +165,7 @@ class SlackService:
 			channel_name (str): The name of the Slack channel.
 			start_time (int): The start time for fetching messages (Unix timestamp).
 			end_time (int): The end time for fetching messages (Unix timestamp).
+			workflow_name (str): The name of the workflow bot to filter messages by.
 
 		Returns:
 			str: Formatted text with standup messages grouped by date.
@@ -184,7 +184,7 @@ class SlackService:
 		# Filter messages by the standup workflow
 		messages = self._filter_messages_by_workflow(
 			messages,
-			STANDUP_WORKFLOW_NAME,
+			workflow_name,
 		)
 
 		for message in messages:

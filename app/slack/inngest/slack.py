@@ -27,10 +27,14 @@ async def fetch_slack(ctx: inngest.Context):
 	Retrieves standup messages from a specified Slack channel within a given
 	date range and returns formatted text with standup data grouped by date.
 
+	The workflow name is determined by:
+	- If slack_metadata.workflow_name is provided, it is used
+	- Otherwise, it is generated as "{project_metadata.project_name} - Daily Tasks Tracker"
+
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
-			- slack_metadata (dict): Slack configuration with channel_slug
-			- project_metadata (dict): Project details with start_date and end_date
+			- slack_metadata (dict): Slack configuration with channel_slug and optional workflow_name
+			- project_metadata (dict): Project details with start_date, end_date, and project_name
 
 	Returns:
 		str: Formatted text with standup messages grouped by date headers.
@@ -56,12 +60,19 @@ async def fetch_slack(ctx: inngest.Context):
 		start_ts = to_unix(project_metadata.start_date)
 		end_ts = to_unix(project_metadata.end_date)
 
+		# Resolve workflow name: prefer override, else generate from project name
+		workflow_name = (
+			(slack_metadata.workflow_name or "").strip()
+			or f"{project_metadata.project_name.strip()} - Daily Tasks Tracker"
+		)
+
 		slack_service = SlackService()
 
 		return slack_service.get_standups(
 			slack_metadata.channel_slug,
 			start_ts,
 			end_ts,
+			workflow_name,
 		)
 	except ValidationError as e:
 		ctx.logger.error(f"Validation error for SlackMetadata/ProjectMetadata: {e}")
