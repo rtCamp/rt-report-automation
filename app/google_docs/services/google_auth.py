@@ -1,31 +1,39 @@
 """Authentication service for Google Workspace using Service Account."""
 
 import json
-import threading
+import logging
 
+from google.auth import exceptions as auth_exceptions
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import Resource, build
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class GoogleAuthService:
 	"""Service for authenticating with Google Workspace using service account.
 
-	This service is thread-safe. Credentials are cached per-thread using
-	thread-local storage.
+	Thread-safety notes:
+		- Credentials are cached and shared across calls (thread-safe).
+		- Service objects (Resource) are created fresh on each call.
+		- Do NOT share returned service objects across threads, as httplib2.Http()
+		is not thread-safe. Call get_drive_service() or get_docs_service() in
+		each thread that needs them.
 	"""
 
 	def __init__(self):
 		"""Initialize the GoogleAuthService."""
-		self._local = threading.local()
+		self._credentials: service_account.Credentials | None = None
 
 	def _get_credentials(self) -> service_account.Credentials:
 		"""Get or create service account credentials.
 
-		Credentials are cached per-thread for performance while maintaining
-		thread-safety.
+		Credentials are cached at the instance level. The underlying Credentials
+		object from google-auth is thread-safe and handles concurrent access
+		internally.
 
 		Returns:
 			service_account.Credentials: Google service account credentials.
@@ -34,8 +42,8 @@ class GoogleAuthService:
 			ValueError: If service account key is invalid.
 
 		"""
-		# Get or create credentials for this thread
-		if not hasattr(self._local, "credentials"):
+		# Create credentials if not already cached
+		if self._credentials is None:
 			try:
 				# Parse the service account key JSON
 				service_account_info = json.loads(
@@ -44,31 +52,41 @@ class GoogleAuthService:
 
 				# Create credentials from service account info
 				creds = service_account.Credentials
-				self._local.credentials = creds.from_service_account_info(
+				self._credentials = creds.from_service_account_info(
 					service_account_info,
 					scopes=settings.google_scopes_list,
 				)
 
 			except json.JSONDecodeError as e:
+				logger.error("Invalid service account key format: %s", e)
 				raise ValueError("Invalid service account key format") from e
 			except KeyError as e:
 				error_msg = f"Service account key missing required field: {e}"
+				logger.error(error_msg)
 				raise ValueError(error_msg) from e
 
 		# Ensure cached credentials are valid before returning
-		credentials = self._local.credentials
-		if not credentials.valid or not credentials.token:
+		if not self._credentials.valid or not self._credentials.token:
 			try:
-				credentials.refresh(Request())
-			except Exception as e:
+				self._credentials.refresh(Request())
+			except auth_exceptions.RefreshError as e:
+				logger.error("Failed to refresh credentials: %s", e)
 				raise ValueError(
 					f"Failed to refresh service account credentials: {e}",
 				) from e
 
-		return credentials
+		return self._credentials
 
 	def get_drive_service(self) -> Resource:
 		"""Get an authenticated Google Drive service.
+
+		Creates a new service instance on each call. While credentials are reused
+		(thread-safe), each service object has its own httplib2.Http() instance.
+
+		Warning:
+			The returned Resource object should NOT be shared across threads.
+			The underlying httplib2.Http() is not thread-safe. Each thread should
+			call this method to get its own service instance.
 
 		Returns:
 			Resource: Google Drive API service.
@@ -82,6 +100,14 @@ class GoogleAuthService:
 
 	def get_docs_service(self) -> Resource:
 		"""Get an authenticated Google Docs service.
+
+		Creates a new service instance on each call. While credentials are reused
+		(thread-safe), each service object has its own httplib2.Http() instance.
+
+		Warning:
+			The returned Resource object should NOT be shared across threads.
+			The underlying httplib2.Http() is not thread-safe. Each thread should
+			call this method to get its own service instance.
 
 		Returns:
 			Resource: Google Docs API service.

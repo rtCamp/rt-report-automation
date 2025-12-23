@@ -1,7 +1,7 @@
 """Application configuration settings."""
 
 from dotenv import load_dotenv
-from pydantic import HttpUrl, SecretStr, field_validator, model_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -57,7 +57,10 @@ class Settings(BaseSettings):
 	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr
 	GOOGLE_TEMPLATE_DOC_ID: str
 	GOOGLE_OUTPUT_FOLDER_ID: str
-	GOOGLE_SCOPES: str = "https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents"
+	GOOGLE_SCOPES: str = Field(
+		default="https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents",
+		description="Comma-separated list of Google API scopes",
+	)
 
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
@@ -104,6 +107,15 @@ class Settings(BaseSettings):
 			raise ValueError(
 				"GOOGLE_OUTPUT_FOLDER_ID must be set and cannot be empty",
 			)
+
+		# Validate GOOGLE_SCOPES at initialization
+		if not self.GOOGLE_SCOPES.strip():
+			raise ValueError(
+				"GOOGLE_SCOPES must be set and cannot be empty",
+			)
+
+		# Ensure at least one valid scope exists
+		_ = self.google_scopes_list
 
 		return self
 
