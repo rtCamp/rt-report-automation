@@ -1,5 +1,6 @@
 """Authentication service layer for GitHub integration."""
 
+import asyncio
 import time
 from datetime import UTC, datetime
 
@@ -10,7 +11,11 @@ from fastapi import HTTPException
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import InternalServerError
-from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY
+from app.github.utils.constants import (
+	GITHUB_ACCESS_TOKEN_KEY,
+	GITHUB_TOKEN_REFRESH_LOCK_KEY,
+	GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
+)
 
 
 class GitHubAuthService:
@@ -50,11 +55,39 @@ class GitHubAuthService:
 			)
 
 	async def get_access_token(self) -> str:
-		"""Exchange JWT for a GitHub App installation access token."""
+		"""Exchange JWT for a GitHub App installation access token with a Redis lock.
+
+		- Returns cached token if present.
+		- If missing, acquires an NX lock so only one worker refreshes the token.
+		- If lock is held, waits briefly for another worker to populate the token.
+		"""
 		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 		if cached_token is not None:
 			return str(cached_token)
 
+		# Try to acquire a short-lived refresh lock to prevent concurrent refreshes
+		have_lock = redis_client.set(
+			GITHUB_TOKEN_REFRESH_LOCK_KEY,
+			"1",
+			nx=True,
+			ex=GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
+		)
+
+		if not have_lock:
+			# Another worker is refreshing; wait for the token to appear
+			for _ in range(10):  # ~5 seconds total wait
+				await asyncio.sleep(0.5)
+				cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
+				if cached_token:
+					return str(cached_token)
+
+			# Still no token available; surface a transient error
+			raise InternalServerError(
+				"Token refresh in progress",
+				"Unable to read refreshed token from Redis",
+			)
+
+		# We have the lock; perform the token exchange
 		jwt_token = self._generate_app_signed_jwt()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
@@ -86,7 +119,7 @@ class GitHubAuthService:
 
 			# Calculate TTL in seconds, subtract 60s buffer
 			ttl_seconds = int(
-				(expiry_dt - datetime.now(UTC)).total_seconds() - 60,
+				(expiry_dt - datetime.now(UTC)).total_seconds() - 300,
 			)
 
 			# Cache the token in Redis
