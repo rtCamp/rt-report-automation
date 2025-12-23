@@ -53,11 +53,22 @@ class Settings(BaseSettings):
 	# Slack Configuration
 	SLACK_BOT_TOKEN: SecretStr
 
+	# Google Workspace Configuration
+	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr
+	GOOGLE_TEMPLATE_DOC_ID: str
+	GOOGLE_OUTPUT_FOLDER_ID: str
+	GOOGLE_SCOPES: str = "https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents"
+
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
 		"""Parse comma-separated origins into a list."""
 		return v.split(",") if v else []
+
+	@property
+	def google_scopes_list(self) -> list[str]:
+		"""Get Google scopes as a list."""
+		return [s.strip() for s in self.GOOGLE_SCOPES.split(",") if s.strip()]
 
 	@model_validator(mode="after")
 	def validate_required_secrets(self):
