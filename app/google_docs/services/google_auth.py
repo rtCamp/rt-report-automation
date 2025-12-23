@@ -1,23 +1,31 @@
 """Authentication service for Google Workspace using Service Account."""
 
 import json
+import threading
 
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource, build
 
 from app.core.config import settings
 
 
 class GoogleAuthService:
-	"""Service for authenticating with Google Workspace using service account."""
+	"""Service for authenticating with Google Workspace using service account.
+
+	This service is thread-safe. Credentials are cached per-thread using
+	thread-local storage.
+	"""
 
 	def __init__(self):
 		"""Initialize the GoogleAuthService."""
-		self._credentials = None
+		self._local = threading.local()
 
 	def _get_credentials(self) -> service_account.Credentials:
 		"""Get or create service account credentials.
+
+		Credentials are cached per-thread for performance while maintaining
+		thread-safety.
 
 		Returns:
 			service_account.Credentials: Google service account credentials.
@@ -26,7 +34,8 @@ class GoogleAuthService:
 			ValueError: If service account key is invalid.
 
 		"""
-		if self._credentials is None:
+		# Get or create credentials for this thread
+		if not hasattr(self._local, "credentials"):
 			try:
 				# Parse the service account key JSON
 				service_account_info = json.loads(
@@ -35,7 +44,7 @@ class GoogleAuthService:
 
 				# Create credentials from service account info
 				creds = service_account.Credentials
-				self._credentials = creds.from_service_account_info(
+				self._local.credentials = creds.from_service_account_info(
 					service_account_info,
 					scopes=settings.google_scopes_list,
 				)
@@ -46,34 +55,40 @@ class GoogleAuthService:
 				error_msg = f"Service account key missing required field: {e}"
 				raise ValueError(error_msg) from e
 
-		return self._credentials
+		# Ensure cached credentials are valid before returning
+		credentials = self._local.credentials
+		if not credentials.valid or not credentials.token:
+			try:
+				credentials.refresh(Request())
+			except Exception as e:
+				raise ValueError(
+					f"Failed to refresh service account credentials: {e}",
+				) from e
 
-	def get_drive_service(self):
+		return credentials
+
+	def get_drive_service(self) -> Resource:
 		"""Get an authenticated Google Drive service.
 
 		Returns:
 			Resource: Google Drive API service.
 
+		Raises:
+			ValueError: If credentials are invalid or refresh fails.
+
 		"""
 		credentials = self._get_credentials()
-
-		# Service account credentials need to be refreshed to get access token
-		if not credentials.valid or not credentials.token:
-			credentials.refresh(Request())
-
 		return build("drive", "v3", credentials=credentials)
 
-	def get_docs_service(self):
+	def get_docs_service(self) -> Resource:
 		"""Get an authenticated Google Docs service.
 
 		Returns:
 			Resource: Google Docs API service.
 
+		Raises:
+			ValueError: If credentials are invalid or refresh fails.
+
 		"""
 		credentials = self._get_credentials()
-
-		# Service account credentials need to be refreshed to get access token
-		if not credentials.valid or not credentials.token:
-			credentials.refresh(Request())
-
 		return build("docs", "v1", credentials=credentials)

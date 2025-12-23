@@ -67,8 +67,18 @@ class Settings(BaseSettings):
 
 	@property
 	def google_scopes_list(self) -> list[str]:
-		"""Get Google scopes as a list."""
-		return [s.strip() for s in self.GOOGLE_SCOPES.split(",") if s.strip()]
+		"""Get Google scopes as a list.
+
+		Raises:
+			ValueError: If no valid scopes are configured.
+
+		"""
+		scopes = [s.strip() for s in self.GOOGLE_SCOPES.split(",") if s.strip()]
+		if not scopes:
+			raise ValueError(
+				"GOOGLE_SCOPES must contain at least one valid scope",
+			)
+		return scopes
 
 	@model_validator(mode="after")
 	def validate_required_secrets(self):
@@ -78,6 +88,22 @@ class Settings(BaseSettings):
 
 		if not self.SLACK_BOT_TOKEN.get_secret_value().strip():
 			raise ValueError("SLACK_BOT_TOKEN must be set and cannot be empty")
+
+		# Validate Google Workspace configuration
+		if not self.GOOGLE_SERVICE_ACCOUNT_KEY.get_secret_value().strip():
+			raise ValueError(
+				"GOOGLE_SERVICE_ACCOUNT_KEY must be set and cannot be empty",
+			)
+
+		if not self.GOOGLE_TEMPLATE_DOC_ID.strip():
+			raise ValueError(
+				"GOOGLE_TEMPLATE_DOC_ID must be set and cannot be empty",
+			)
+
+		if not self.GOOGLE_OUTPUT_FOLDER_ID.strip():
+			raise ValueError(
+				"GOOGLE_OUTPUT_FOLDER_ID must be set and cannot be empty",
+			)
 
 		return self
 
