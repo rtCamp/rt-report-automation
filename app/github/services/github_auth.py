@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.exceptions import InternalServerError
 from app.github.utils.constants import (
 	GITHUB_ACCESS_TOKEN_KEY,
+	GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
 	GITHUB_TOKEN_REFRESH_LOCK_KEY,
 	GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
 )
@@ -54,16 +55,20 @@ class GitHubAuthService:
 				"Failed to generate JWT",
 			)
 
-	async def get_access_token(self) -> str:
+	async def get_access_token(self, force_refresh: bool = False) -> str:
 		"""Exchange JWT for a GitHub App installation access token with a Redis lock.
 
-		- Returns cached token if present.
+		- Returns cached token if present and not forcing refresh.
 		- If missing, acquires an NX lock so only one worker refreshes the token.
 		- If lock is held, waits briefly for another worker to populate the token.
 		"""
 		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
-		if cached_token is not None:
+		if cached_token is not None and not force_refresh:
 			return str(cached_token)
+
+		# If the caller forces refresh, clear any existing token first
+		if force_refresh and cached_token is not None:
+			redis_client.delete(GITHUB_ACCESS_TOKEN_KEY)
 
 		# Try to acquire a short-lived refresh lock to prevent concurrent refreshes
 		have_lock = redis_client.set(
@@ -117,9 +122,10 @@ class GitHubAuthService:
 				access_token_expiry.replace("Z", "+00:00"),
 			)
 
-			# Calculate TTL in seconds, subtract 60s buffer
+			# Calculate TTL in seconds with pre-refresh buffer
 			ttl_seconds = int(
-				(expiry_dt - datetime.now(UTC)).total_seconds() - 300,
+				(expiry_dt - datetime.now(UTC)).total_seconds()
+				- GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
 			)
 
 			# Cache the token in Redis
