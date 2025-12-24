@@ -138,7 +138,14 @@ class GitHubAuthService:
 				- GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
 			)
 
-			# Cache the token in Redis
+			# Ensure the TTL is positive; otherwise, treat the token as invalid
+			if ttl_seconds <= 0:
+				raise InternalServerError(
+					"Received GitHub access token with non-positive TTL",
+					"Token is already expired or expires within the configured buffer",
+				)
+
+			# Cache the token in Redis with a valid TTL
 			redis_client.set(
 				GITHUB_ACCESS_TOKEN_KEY,
 				access_token_value,

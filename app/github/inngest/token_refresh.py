@@ -15,7 +15,7 @@ from app.github.utils.constants import (
 
 @inngest_client.create_function(
 	fn_id="refresh_github_access_token",
-	trigger=inngest.TriggerCron(cron="*/2 * * * *"),  # every 2 minute
+	trigger=inngest.TriggerCron(cron="*/2 * * * *"),  # every 2 minutes
 )
 async def refresh_github_access_token(ctx: inngest.Context) -> dict:
 	"""Proactively refresh GitHub installation access token if nearing expiry.
@@ -30,9 +30,10 @@ async def refresh_github_access_token(ctx: inngest.Context) -> dict:
 		dict: Status of the token refresh operation.
 
 	"""
-	ttl = cast("int", redis_client.ttl(GITHUB_ACCESS_TOKEN_KEY))
+	ttl = cast(int, redis_client.ttl(GITHUB_ACCESS_TOKEN_KEY))  # noqa: TC006
 
-	# If token missing (-2) or expiring within buffer, attempt refresh
+	# If token missing (-2), has no expiry set (-1),
+	# or is expiring within buffer, attempt refresh
 	if ttl == -2 or (ttl != -1 and ttl <= GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS):
 		try:
 			auth = GitHubAuthService()
