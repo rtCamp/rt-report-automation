@@ -57,10 +57,14 @@ class GitHubAuthService:
 
 	async def get_access_token(self, force_refresh: bool = False) -> str:
 		"""Exchange JWT for a GitHub App installation access token with a Redis lock.
-
 		- Returns cached token if present and not forcing refresh.
 		- If missing, acquires an NX lock so only one worker refreshes the token.
 		- If lock is held, waits briefly for another worker to populate the token.
+
+		:param force_refresh: Whether to force refresh the token, defaults to False
+		:type force_refresh: bool, optional
+		:return: GitHub installation access token
+		:rtype: str
 		"""
 		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
 		if cached_token is not None and not force_refresh:
