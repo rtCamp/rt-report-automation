@@ -31,7 +31,7 @@ class GoogleDocsService:
 
 		Returns:
 			dict: Dictionary containing the document URL.
-				Example: {"documentUrl": "https://docs.google.com/document/d/..."}
+				Example: {"document_url": "https://docs.google.com/document/d/..."}
 
 		Raises:
 			ValueError: If replacements is missing or invalid.
@@ -51,7 +51,7 @@ class GoogleDocsService:
 
 			logger.info(f"Document generated successfully: {document_url}")
 
-			return {"documentUrl": document_url}
+			return {"document_url": document_url}
 
 		except ValueError:
 			# Re-raise validation errors as-is
