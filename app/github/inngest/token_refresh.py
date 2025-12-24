@@ -1,5 +1,7 @@
 """Inngest function to proactively refresh GitHub installation token."""
 
+from typing import cast
+
 import inngest
 
 from app.core.adapters.inngest import inngest_client
@@ -8,8 +10,6 @@ from app.github.services.github_auth import GitHubAuthService
 from app.github.utils.constants import (
 	GITHUB_ACCESS_TOKEN_KEY,
 	GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
-	GITHUB_TOKEN_REFRESH_LOCK_KEY,
-	GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
 )
 
 
@@ -30,16 +30,10 @@ async def refresh_github_access_token(ctx: inngest.Context) -> dict:
 		dict: Status of the token refresh operation.
 
 	"""
-	ttl = redis_client.ttl(GITHUB_ACCESS_TOKEN_KEY)
+	ttl = cast("int", redis_client.ttl(GITHUB_ACCESS_TOKEN_KEY))
 
 	# If token missing (-2) or expiring within buffer, attempt refresh
-	if (
-		ttl == -2
-		or (
-			ttl != -1
-			and ttl <= GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS
-		)
-	):
+	if ttl == -2 or (ttl != -1 and ttl <= GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS):
 		try:
 			auth = GitHubAuthService()
 			await auth.get_access_token(force_refresh=True)
