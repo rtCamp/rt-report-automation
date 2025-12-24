@@ -15,21 +15,31 @@ from app.github.utils.constants import (
 
 @inngest_client.create_function(
 	fn_id="refresh_github_access_token",
-	trigger=inngest.TriggerCron(cron="*/2 * * * *"),  # every minute
+	trigger=inngest.TriggerCron(cron="*/2 * * * *"),  # every 2 minute
 )
 async def refresh_github_access_token(ctx: inngest.Context) -> dict:
-	"""
-	Proactively refresh GitHub installation access token if nearing expiry.
+	"""Proactively refresh GitHub installation access token if nearing expiry.
 
-	:param ctx: Inngest function context
-	:type ctx: inngest.Context
-	:return: Status of the token refresh operation
-	:rtype: dict[Any, Any]
+	Args:
+		ctx (inngest.Context): Inngest function context.
+
+	Raises:
+		Exception: If token refresh fails.
+
+	Returns:
+		dict: Status of the token refresh operation.
+
 	"""
 	ttl = redis_client.ttl(GITHUB_ACCESS_TOKEN_KEY)
 
 	# If token missing (-2) or expiring within buffer, attempt refresh
-	if ttl == -2 or (ttl != -1 and int(ttl) <= GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS):
+	if (
+		ttl == -2
+		or (
+			ttl != -1
+			and ttl <= GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS
+		)
+	):
 		# Acquire a short-lived lock so only one worker refreshes
 		have_lock = redis_client.set(
 			GITHUB_TOKEN_REFRESH_LOCK_KEY,
