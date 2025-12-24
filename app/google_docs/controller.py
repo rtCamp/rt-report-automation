@@ -77,8 +77,6 @@ async def generate_document(
 			doc_name=request.doc_name,
 		)
 
-		logger.info(f"Document generated successfully: {result['document_url']}")
-
 		return GenerateDocResponse(**result)
 
 	except ValueError as e:

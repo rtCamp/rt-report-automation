@@ -49,14 +49,12 @@ class GoogleDocsService:
 				output_name=output_name,
 			)
 
-			logger.info(f"Document generated successfully: {document_url}")
-
 			return {"document_url": document_url}
 
 		except ValueError:
 			# Re-raise validation errors as-is
 			raise
 		except Exception as e:
-			error_message = f"Error generating document: {str(e)}"
-			logger.error(error_message)
-			raise Exception(error_message) from e
+			error_msg = "Error generating document"
+			logger.error("%s: %s", error_msg, e)
+			raise Exception(error_msg) from e

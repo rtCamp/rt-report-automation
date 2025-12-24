@@ -45,12 +45,10 @@ class DocGeneratorService:
 			# Step 1: Copy the template document
 			copy_request_body: dict[str, str | list[str]] = {"name": output_name}
 
+			# Add output folder if configured
+			# If not set, document will be copied to the template's parent folder
 			if settings.GOOGLE_OUTPUT_FOLDER_ID:
-				try:
-					# Try to use specified output folder
-					copy_request_body["parents"] = [settings.GOOGLE_OUTPUT_FOLDER_ID]
-				except Exception as e:
-					logger.error(f"Failed to add output folder: {e}")
+				copy_request_body["parents"] = [settings.GOOGLE_OUTPUT_FOLDER_ID]
 
 			copied_file = (
 				drive_service.files()
@@ -65,11 +63,9 @@ class DocGeneratorService:
 			doc_id = copied_file.get("id")
 
 			if not doc_id:
-				raise Exception(
-					"Failed to create document copy - no document ID returned",
-				)
-
-			logger.info(f"Document copied successfully: {doc_id}")
+				error_msg = "Failed to create document copy - no document ID returned"
+				logger.error("%s", error_msg)
+				raise ValueError(error_msg)
 
 			# Step 2: Prepare batch update requests for all replacements
 			requests = []
@@ -78,7 +74,7 @@ class DocGeneratorService:
 				template_tag = get_template_tag(key)
 
 				# Handle both string and list values
-				replace_text = isinstance(value, list) and "\n".join(value) or value
+				replace_text = "\n".join(value) if isinstance(value, list) else value
 
 				requests.append(
 					{
@@ -98,14 +94,14 @@ class DocGeneratorService:
 					documentId=doc_id,
 					body={"requests": requests},
 				).execute()
-				logger.info("Batch update completed successfully")
 
 			# Return the document URL
-			document_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-			logger.info(f"Document generated successfully: {document_url}")
+			return f"https://docs.google.com/document/d/{doc_id}/edit"
 
-			return document_url
-
-		except Exception as e:
-			logger.error(f"Error generating document: {e}")
+		except ValueError:
+			# Re-raise validation errors as-is
 			raise
+		except Exception as e:
+			error_msg = "Error generating document"
+			logger.error("%s: %s", error_msg, e)
+			raise Exception(error_msg) from e
