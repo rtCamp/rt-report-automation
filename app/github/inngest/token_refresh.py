@@ -40,17 +40,6 @@ async def refresh_github_access_token(ctx: inngest.Context) -> dict:
 			and ttl <= GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS
 		)
 	):
-		# Acquire a short-lived lock so only one worker refreshes
-		have_lock = redis_client.set(
-			GITHUB_TOKEN_REFRESH_LOCK_KEY,
-			"1",
-			nx=True,
-			ex=GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
-		)
-
-		if not have_lock:
-			return {"status": "skipped", "reason": "lock_held"}
-
 		try:
 			auth = GitHubAuthService()
 			await auth.get_access_token(force_refresh=True)
