@@ -1,4 +1,4 @@
-"""Authentication service for Google Workspace using Service Account."""
+"""Authentication service for Google Workspace using service account."""
 
 import json
 import logging
@@ -36,7 +36,7 @@ class GoogleAuthService:
 		internally.
 
 		Returns:
-			service_account.Credentials: Google service account credentials.
+			service_account.Credentials: Service account credentials for Google APIs.
 
 		Raises:
 			ValueError: If service account key is invalid.
@@ -51,18 +51,19 @@ class GoogleAuthService:
 				)
 
 				# Create credentials from service account info
-				creds = service_account.Credentials
-				self._credentials = creds.from_service_account_info(
+				credentials = service_account.Credentials
+				self._credentials = credentials.from_service_account_info(
 					service_account_info,
 					scopes=settings.google_scopes_list,
 				)
 
 			except json.JSONDecodeError as e:
-				logger.error("Invalid service account key format: %s", e)
-				raise ValueError("Invalid service account key format") from e
+				error_msg = "Invalid service account key format"
+				logger.error("%s: %s", error_msg, e)
+				raise ValueError(error_msg) from e
 			except KeyError as e:
 				error_msg = f"Service account key missing required field: {e}"
-				logger.error(error_msg)
+				logger.error("%s", error_msg)
 				raise ValueError(error_msg) from e
 
 		# Ensure cached credentials are valid before returning
@@ -70,15 +71,14 @@ class GoogleAuthService:
 			try:
 				self._credentials.refresh(Request())
 			except auth_exceptions.RefreshError as e:
-				logger.error("Failed to refresh credentials: %s", e)
-				raise ValueError(
-					f"Failed to refresh service account credentials: {e}",
-				) from e
+				error_msg = "Failed to refresh service account credentials"
+				logger.error("%s: %s", error_msg, e)
+				raise ValueError(error_msg) from e
 
 		return self._credentials
 
 	def get_drive_service(self) -> Resource:
-		"""Get an authenticated Google Drive service.
+		"""Get an authenticated Google Drive API service.
 
 		Creates a new service instance on each call. While credentials are reused
 		(thread-safe), each service object has its own httplib2.Http() instance.
@@ -99,7 +99,7 @@ class GoogleAuthService:
 		return build("drive", "v3", credentials=credentials)
 
 	def get_docs_service(self) -> Resource:
-		"""Get an authenticated Google Docs service.
+		"""Get an authenticated Google Docs API service.
 
 		Creates a new service instance on each call. While credentials are reused
 		(thread-safe), each service object has its own httplib2.Http() instance.
