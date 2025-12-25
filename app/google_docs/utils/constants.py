@@ -10,10 +10,24 @@ def get_template_tag(key: str) -> str:
 	"""Generate a template tag for replacements.
 
 	Args:
-		key: The key for the template tag.
+		key: The key for the template tag. Must be non-empty and
+			contain only alphanumeric characters, hyphens, and underscores.
 
 	Returns:
 		The formatted template tag.
 
+	Raises:
+		ValueError: If key is empty or contains invalid characters.
+
 	"""
+	if not key or not key.strip():
+		raise ValueError("Template tag key cannot be empty")
+
+	# Allow alphanumeric, hyphens, underscores, and spaces
+	if not all(c.isalnum() or c in "-_ " for c in key):
+		raise ValueError(
+			f"Template tag key '{key}' contains invalid characters. "
+			"Only alphanumeric, hyphens, underscores, and spaces are allowed.",
+		)
+
 	return f"{{{{{{{TAG_PREFIX}{key}{TAG_SUFFIX}}}}}}}"

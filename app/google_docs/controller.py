@@ -2,8 +2,9 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
+from app.core.utils import log_and_raise
 from app.google_docs.models.models import GenerateDocRequest, GenerateDocResponse
 from app.google_docs.services.google_docs import GoogleDocsService
 
@@ -61,13 +62,17 @@ async def generate_document(
 
 	Args:
 		request: Document generation request containing replacements and
-		optional doc name.
+			optional doc name.
 
 	Returns:
 		GenerateDocResponse: Response containing the generated document URL.
 
 	Raises:
-		HTTPException: 400 for invalid input, 500 for generation errors.
+		HTTPException:
+			- 400 (Bad Request): If replacements is None, not a dict, has empty keys,
+				or doc_name is empty.
+			- 500 (Internal Server Error): If document creation or update fails due to
+				Google API errors, authentication issues, or other unexpected errors.
 
 	"""
 	try:
@@ -80,14 +85,16 @@ async def generate_document(
 		return GenerateDocResponse(**result)
 
 	except ValueError as e:
-		logger.error(f"Validation error: {str(e)}")
-		raise HTTPException(
-			status_code=status.HTTP_400_BAD_REQUEST,
-			detail=str(e),
-		) from e
+		log_and_raise(
+			logger,
+			str(e),
+			http_status_code=status.HTTP_400_BAD_REQUEST,
+			cause=e,
+		)
 	except Exception as e:
-		logger.error(f"Error generating document: {str(e)}")
-		raise HTTPException(
-			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail=f"Error generating document: {str(e)}",
-		) from e
+		log_and_raise(
+			logger,
+			f"Error generating document: {e}",
+			http_status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			cause=e,
+		)

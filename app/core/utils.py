@@ -5,6 +5,8 @@ import logging
 import time
 from typing import Any, NoReturn, TypeGuard, TypeVar
 
+from fastapi import HTTPException
+
 T = TypeVar("T")
 
 
@@ -37,6 +39,7 @@ def log_and_raise(
 	message: str,
 	exception_type: type[Exception] = ValueError,
 	cause: Exception | None = None,
+	http_status_code: int | None = None,
 ) -> NoReturn:
 	"""Log an error message and raise an exception.
 
@@ -48,11 +51,15 @@ def log_and_raise(
 		logger: Logger instance to use for logging.
 		message: Error message to log and raise.
 		exception_type: Type of exception to raise (default: ValueError).
+			Ignored if http_status_code is provided.
 		cause: Original exception to chain from (optional). When provided, the error
 			message will include details from the cause.
+		http_status_code: HTTP status code for FastAPI controllers (optional).
+			When provided, raises HTTPException instead of exception_type.
 
 	Raises:
-		The specified exception_type with the given message.
+		HTTPException: If http_status_code is provided.
+		The specified exception_type: If http_status_code is not provided.
 
 	Examples:
 		>>> log_and_raise(logger, "Invalid input")
@@ -61,9 +68,19 @@ def log_and_raise(
 		>>> log_and_raise(logger, "Operation failed", Exception, original_error)
 		# Logs: "Operation failed: <error details>" and raises Exception
 
+		>>> log_and_raise(logger, "Not found", http_status_code=404, cause=e)
+		# Logs: "Not found: <error details>" and raises HTTPException(404) from e
+
 	"""
+	# Determine which exception to raise
+	if http_status_code:
+		exception = HTTPException(status_code=http_status_code, detail=message)
+	else:
+		exception = exception_type(message)
+
+	# Raise with or without chaining
 	if cause:
 		logger.error("%s: %s", message, cause)
-		raise exception_type(message) from cause
+		raise exception from cause
 	logger.error("%s", message)
-	raise exception_type(message)
+	raise exception

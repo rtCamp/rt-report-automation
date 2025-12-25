@@ -18,7 +18,7 @@ class GoogleDocsService:
 
 	async def generate_document(
 		self,
-		replacements: dict[str, str | list[str]],
+		replacements: dict[str, str | list[str]] | None,
 		doc_name: str | None = None,
 	) -> dict[str, str]:
 		"""Generate a Google Doc from template with replacements.
@@ -40,8 +40,11 @@ class GoogleDocsService:
 
 		"""
 		try:
-			if not replacements or not isinstance(replacements, dict):
-				raise ValueError("Missing or invalid replacements object")
+			if replacements is None or not isinstance(replacements, dict):
+				log_and_raise(
+					logger,
+					"Missing or invalid replacements object",
+				)
 
 			output_name = doc_name or DEFAULT_DOC_NAME
 
@@ -52,9 +55,6 @@ class GoogleDocsService:
 
 			return {"document_url": document_url}
 
-		except ValueError:
-			# Re-raise validation errors as-is
-			raise
 		except Exception as e:
 			log_and_raise(
 				logger,

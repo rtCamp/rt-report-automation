@@ -33,9 +33,26 @@ class DocGeneratorService:
 			str: URL of the created document.
 
 		Raises:
+			ValueError: If output_name is empty, replacement keys are empty,
+				or template tag keys contain invalid characters.
 			Exception: If document creation or update fails.
 
 		"""
+		# Validate inputs
+		if not output_name or not output_name.strip():
+			log_and_raise(
+				logger,
+				"Document name cannot be empty",
+			)
+
+		# Validate replacement keys
+		for key in replacements:
+			if not key or not key.strip():
+				log_and_raise(
+					logger,
+					"Replacement keys cannot be empty",
+				)
+
 		# Each call creates a NEW service object with its own httplib2.Http() instance.
 		# This ensures thread-safety - even if multiple threads call this method
 		# simultaneously, each gets its own service objects.
@@ -44,7 +61,9 @@ class DocGeneratorService:
 
 		try:
 			# Step 1: Copy the template document
-			copy_request_body: dict[str, str | list[str]] = {"name": output_name}
+			copy_request_body: dict[str, str | list[str]] = {
+				"name": output_name.strip(),
+			}
 
 			# Add output folder if configured
 			# If not set, document will be copied to the template's parent folder
@@ -63,7 +82,7 @@ class DocGeneratorService:
 
 			doc_id = copied_file.get("id")
 
-			if not doc_id:
+			if not doc_id or not isinstance(doc_id, str):
 				log_and_raise(
 					logger,
 					"Failed to create document copy - no document ID returned",
@@ -100,9 +119,6 @@ class DocGeneratorService:
 			# Return the document URL
 			return f"https://docs.google.com/document/d/{doc_id}/edit"
 
-		except ValueError:
-			# Re-raise validation errors as-is
-			raise
 		except Exception as e:
 			log_and_raise(
 				logger,
