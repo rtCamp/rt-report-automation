@@ -28,7 +28,7 @@ def format_to_yymmdd(iso_date: str) -> str:
 	return f"{yy}-{mm}-{dd}"
 
 
-def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dict]:
+def get_processed_issue_list(issues: list[dict], project_board: str) -> str:
 	"""Filter and process GitHub issues for a specific project board.
 
 	- Keeps only project items belonging to the given project board.
@@ -42,7 +42,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 		project_board (str): Name of the project board to filter issues.
 
 	Returns:
-		list[dict]: Processed and filtered issues.
+		str: A formatted string representation of the processed issues.
 
 	"""
 	processed_issues: list[dict] = []
@@ -68,7 +68,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 		)
 		processed_issues.append(processed_item)
 
-	return transform_to_llm_text(processed_issues)  # type: ignore
+	return transform_to_llm_text(processed_issues)
 
 
 def filter_project_items(item: dict, project_board: str) -> list[dict]:
@@ -195,7 +195,7 @@ def extract_list_values(data: dict, root_key: str, sub_path: list[str]) -> str:
 		sub_path: Path to navigate within each item.
 
 	Returns:
-		Pipe-separated string of extracted values, or "None" if empty.
+		Pipe-separated string of extracted values, or DEFAULT_VALUE if empty.
 
 	"""
 	items = resolve_path(data, [root_key, "items"])
@@ -206,7 +206,9 @@ def extract_list_values(data: dict, root_key: str, sub_path: list[str]) -> str:
 	for item in items:
 		value = resolve_path(item, sub_path)
 		if value:
-			extracted.append(str(value))
+			# This ensures all extracted text (comments, PR titles, labels)
+			# are single-line safe.
+			extracted.append(" ".join(str(value).split()))
 
 	return " | ".join(extracted) if extracted else DEFAULT_VALUE
 
@@ -244,7 +246,7 @@ def transform_to_llm_text(issue_list: list[dict]) -> str:
 		status = DEFAULT_VALUE
 		project_items = resolve_path(issue, ["projectItems", "items"])
 
-		if project_items and len(project_items) > 0:
+		if project_items:
 			item = project_items[0]
 			project_title = resolve_path(item, ["project", "title"]) or DEFAULT_VALUE
 
