@@ -73,9 +73,6 @@ class GoogleAuthService:
 					e,
 				)
 
-		# At this point, credentials should be initialized
-		assert self._credentials is not None
-
 		# Ensure cached credentials are valid before returning
 		if not self._credentials.valid or not self._credentials.token:
 			try:

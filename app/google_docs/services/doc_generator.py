@@ -59,17 +59,17 @@ class DocGeneratorService:
 		drive_service: Any = self.auth_service.get_drive_service()
 		docs_service: Any = self.auth_service.get_docs_service()
 
+		# Step 1: Copy the template document
+		copy_request_body: dict[str, str | list[str]] = {
+			"name": output_name.strip(),
+		}
+
+		# Add output folder if configured
+		# If not set, document will be copied to the template's parent folder
+		if settings.GOOGLE_OUTPUT_FOLDER_ID:
+			copy_request_body["parents"] = [settings.GOOGLE_OUTPUT_FOLDER_ID]
+
 		try:
-			# Step 1: Copy the template document
-			copy_request_body: dict[str, str | list[str]] = {
-				"name": output_name.strip(),
-			}
-
-			# Add output folder if configured
-			# If not set, document will be copied to the template's parent folder
-			if settings.GOOGLE_OUTPUT_FOLDER_ID:
-				copy_request_body["parents"] = [settings.GOOGLE_OUTPUT_FOLDER_ID]
-
 			copied_file = (
 				drive_service.files()
 				.copy(
@@ -79,50 +79,57 @@ class DocGeneratorService:
 				)
 				.execute()
 			)
+		except Exception as e:
+			log_and_raise(
+				logger,
+				"Failed to copy template document. Check folder permissions.",
+				Exception,
+				e,
+			)
 
-			doc_id = copied_file.get("id")
+		doc_id = copied_file.get("id")
 
-			if not doc_id or not isinstance(doc_id, str):
-				log_and_raise(
-					logger,
-					"Failed to create document copy - no document ID returned",
-				)
+		if not doc_id or not isinstance(doc_id, str):
+			log_and_raise(
+				logger,
+				"Failed to create document copy - no document ID returned",
+			)
 
-			# Step 2: Prepare batch update requests for all replacements
-			requests = []
+		# Step 2: Prepare batch update requests for all replacements
+		requests = []
 
-			for key, value in replacements.items():
-				template_tag = get_template_tag(key)
+		for key, value in replacements.items():
+			template_tag = get_template_tag(key)
 
-				# Handle both string and list values
-				replace_text = "\n".join(value) if isinstance(value, list) else value
+			# Handle both string and list values
+			replace_text = "\n".join(value) if isinstance(value, list) else value
 
-				requests.append(
-					{
-						"replaceAllText": {
-							"containsText": {
-								"text": template_tag,
-								"matchCase": True,
-							},
-							"replaceText": replace_text,
+			requests.append(
+				{
+					"replaceAllText": {
+						"containsText": {
+							"text": template_tag,
+							"matchCase": True,
 						},
+						"replaceText": replace_text,
 					},
-				)
+				},
+			)
 
-			# Step 3: Execute single batch update for all text replacements
-			if requests:
+		# Step 3: Execute single batch update for all text replacements
+		if requests:
+			try:
 				docs_service.documents().batchUpdate(
 					documentId=doc_id,
 					body={"requests": requests},
 				).execute()
+			except Exception as e:
+				log_and_raise(
+					logger,
+					"Failed to update document with replacements. Check template tags.",
+					Exception,
+					e,
+				)
 
-			# Return the document URL
-			return f"https://docs.google.com/document/d/{doc_id}/edit"
-
-		except Exception as e:
-			log_and_raise(
-				logger,
-				"Error generating document",
-				Exception,
-				e,
-			)
+		# Return the document URL
+		return f"https://docs.google.com/document/d/{doc_id}/edit"

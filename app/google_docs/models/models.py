@@ -1,6 +1,8 @@
 """Pydantic models for Google Docs API."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.google_docs.utils.constants import MAX_REPLACEMENTS_ENTRIES
 
 
 class GenerateDocRequest(BaseModel):
@@ -40,6 +42,33 @@ class GenerateDocRequest(BaseModel):
 		max_length=200,
 		examples=["RT Report Automation Report - 2025-12-24"],
 	)
+
+	@field_validator("replacements")
+	@classmethod
+	def validate_replacements(
+		cls,
+		v: dict[str, str | list[str]],
+	) -> dict[str, str | list[str]]:
+		"""Validate replacements dictionary size.
+
+		Args:
+			v: The replacements dictionary to validate.
+
+		Returns:
+			The validated replacements dictionary.
+
+		Raises:
+			ValueError: If the dictionary exceeds maximum allowed entries.
+
+		"""
+		if len(v) > MAX_REPLACEMENTS_ENTRIES:
+			msg = (
+				f"Replacements dictionary exceeds maximum allowed entries. "
+				f"Maximum: {MAX_REPLACEMENTS_ENTRIES}, provided: {len(v)}"
+			)
+			raise ValueError(msg)
+
+		return v
 
 
 class GenerateDocResponse(BaseModel):

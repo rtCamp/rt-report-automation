@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
 from app.core.utils import log_and_raise
+from app.google_docs.dependencies import get_google_docs_service
 from app.google_docs.models.models import GenerateDocRequest, GenerateDocResponse
 from app.google_docs.services.google_docs import GoogleDocsService
 
@@ -57,12 +58,14 @@ router = APIRouter(prefix="/google-docs", tags=["Google Docs"])
 )
 async def generate_document(
 	request: GenerateDocRequest,
+	service: GoogleDocsService = Depends(get_google_docs_service),
 ) -> GenerateDocResponse:
 	"""Generate a Google Doc from template with replacements.
 
 	Args:
 		request: Document generation request containing replacements and
 			optional doc name.
+		service: GoogleDocsService instance (injected dependency).
 
 	Returns:
 		GenerateDocResponse: Response containing the generated document URL.
@@ -76,7 +79,6 @@ async def generate_document(
 
 	"""
 	try:
-		service = GoogleDocsService()
 		result = await service.generate_document(
 			replacements=request.replacements,
 			doc_name=request.doc_name,

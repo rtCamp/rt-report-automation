@@ -5,13 +5,16 @@ TAG_PREFIX = "rtai-"
 TAG_SUFFIX = "-rtai"
 DEFAULT_DOC_NAME = "Generated Document"
 
+# Validation limits
+MAX_REPLACEMENTS_ENTRIES = 100  # Maximum number of replacement key-value pairs
+
 
 def get_template_tag(key: str) -> str:
 	"""Generate a template tag for replacements.
 
 	Args:
 		key: The key for the template tag. Must be non-empty and
-			contain only alphanumeric characters, hyphens, and underscores.
+			contain only alphanumeric characters, hyphens, underscores, and spaces.
 
 	Returns:
 		The formatted template tag.
@@ -30,4 +33,7 @@ def get_template_tag(key: str) -> str:
 			"Only alphanumeric, hyphens, underscores, and spaces are allowed.",
 		)
 
+	# Use triple braces to create literal braces in the formatted string
+	# Format: {{{rtai-key-rtai}}} where outer braces escape to create literal {
+	# This produces: {{{rtai-projectName-rtai}}} in the Google Doc template
 	return f"{{{{{{{TAG_PREFIX}{key}{TAG_SUFFIX}}}}}}}"

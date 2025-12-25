@@ -39,26 +39,17 @@ class GoogleDocsService:
 			Exception: If document generation fails.
 
 		"""
-		try:
-			if replacements is None or not isinstance(replacements, dict):
-				log_and_raise(
-					logger,
-					"Missing or invalid replacements object",
-				)
-
-			output_name = doc_name or DEFAULT_DOC_NAME
-
-			document_url = await self.doc_generator.create_doc_from_template(
-				replacements=replacements,
-				output_name=output_name,
-			)
-
-			return {"document_url": document_url}
-
-		except Exception as e:
+		if replacements is None or not isinstance(replacements, dict):
 			log_and_raise(
 				logger,
-				"Error generating document",
-				Exception,
-				e,
+				"Missing or invalid replacements object",
 			)
+
+		output_name = doc_name or DEFAULT_DOC_NAME
+
+		document_url = await self.doc_generator.create_doc_from_template(
+			replacements=replacements,
+			output_name=output_name,
+		)
+
+		return {"document_url": document_url}
