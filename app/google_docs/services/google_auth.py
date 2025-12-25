@@ -9,6 +9,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import Resource, build
 
 from app.core.config import settings
+from app.core.utils import log_and_raise
 
 logger = logging.getLogger(__name__)
 
@@ -58,22 +59,34 @@ class GoogleAuthService:
 				)
 
 			except json.JSONDecodeError as e:
-				error_msg = "Invalid service account key format"
-				logger.error("%s: %s", error_msg, e)
-				raise ValueError(error_msg) from e
+				log_and_raise(
+					logger,
+					"Invalid service account key format",
+					ValueError,
+					e,
+				)
 			except KeyError as e:
-				error_msg = f"Service account key missing required field: {e}"
-				logger.error("%s", error_msg)
-				raise ValueError(error_msg) from e
+				log_and_raise(
+					logger,
+					f"Service account key missing required field: {e}",
+					ValueError,
+					e,
+				)
+
+		# At this point, credentials should be initialized
+		assert self._credentials is not None
 
 		# Ensure cached credentials are valid before returning
 		if not self._credentials.valid or not self._credentials.token:
 			try:
 				self._credentials.refresh(Request())
 			except auth_exceptions.RefreshError as e:
-				error_msg = "Failed to refresh service account credentials"
-				logger.error("%s: %s", error_msg, e)
-				raise ValueError(error_msg) from e
+				log_and_raise(
+					logger,
+					"Failed to refresh service account credentials",
+					ValueError,
+					e,
+				)
 
 		return self._credentials
 

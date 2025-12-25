@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from app.core.config import settings
+from app.core.utils import log_and_raise
 from app.google_docs.services.google_auth import GoogleAuthService
 from app.google_docs.utils.constants import get_template_tag
 
@@ -63,9 +64,10 @@ class DocGeneratorService:
 			doc_id = copied_file.get("id")
 
 			if not doc_id:
-				error_msg = "Failed to create document copy - no document ID returned"
-				logger.error("%s", error_msg)
-				raise ValueError(error_msg)
+				log_and_raise(
+					logger,
+					"Failed to create document copy - no document ID returned",
+				)
 
 			# Step 2: Prepare batch update requests for all replacements
 			requests = []
@@ -102,6 +104,9 @@ class DocGeneratorService:
 			# Re-raise validation errors as-is
 			raise
 		except Exception as e:
-			error_msg = "Error generating document"
-			logger.error("%s: %s", error_msg, e)
-			raise Exception(error_msg) from e
+			log_and_raise(
+				logger,
+				"Error generating document",
+				Exception,
+				e,
+			)

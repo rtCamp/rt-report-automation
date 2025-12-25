@@ -2,6 +2,7 @@
 
 import logging
 
+from app.core.utils import log_and_raise
 from app.google_docs.services.doc_generator import DocGeneratorService
 from app.google_docs.utils.constants import DEFAULT_DOC_NAME
 
@@ -55,6 +56,9 @@ class GoogleDocsService:
 			# Re-raise validation errors as-is
 			raise
 		except Exception as e:
-			error_msg = "Error generating document"
-			logger.error("%s: %s", error_msg, e)
-			raise Exception(error_msg) from e
+			log_and_raise(
+				logger,
+				"Error generating document",
+				Exception,
+				e,
+			)
