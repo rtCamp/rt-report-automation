@@ -22,7 +22,7 @@ class GenerateDocRequest(BaseModel):
 				"projectName": "RT Report Automation",
 				"from": "December 1, 2025",
 				"to": "December 24, 2025",
-				"name": "John Doe",
+				"name": "Nam Dong",
 				"projectStatus": "Green",
 				"summary": "Project summary text",
 				"riskBlockerActionNeeded": "No blockers",
@@ -38,7 +38,7 @@ class GenerateDocRequest(BaseModel):
 		description="Optional name for the generated document",
 		min_length=1,
 		max_length=200,
-		examples=["Weekly Report - 2025-12-24"],
+		examples=["RT Report Automation Report - 2025-12-24"],
 	)
 
 
