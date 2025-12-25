@@ -1,8 +1,13 @@
 """Helper functions for processing GitHub issues and project items."""
 
 from datetime import datetime
+from typing import Any
 
-from app.github.utils.constants import BLOCKED_ISSUE_STATUS_NAME
+from app.github.utils.constants import ( 
+	BLOCKED_ISSUE_STATUS_NAME,
+	DEFAULT_VALUE,
+)
+
 
 
 def format_to_yymmdd(iso_date: str) -> str:
@@ -64,7 +69,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 		)
 		processed_issues.append(processed_item)
 
-	# processed_issues = transform_to_llm_text(processed_issues) # type: ignore
+	processed_issues = transform_to_llm_text(processed_issues) # type: ignore
 	return processed_issues
 
 
@@ -162,77 +167,104 @@ def build_processed_issue_data(
 	return processed_item
 
 
-def resolve_path(data, path_list):
-	"""Helper to safely navigate a list of keys."""
-	for key in path_list:
-		if isinstance(data, dict):
-			data = data.get(key)
-		else:
-			return None
-	return data
+def resolve_path(data: Any, path_list: list[str]) -> Any | None:
+    """Safely navigate nested dictionary keys.
 
-def extract_list_values(data, root_key, sub_path):
-	"""
-	Specifically handles GitHub's 'items' lists.
-	Extracts values from crossReferencedPRs, labels, etc.
-	"""
-	items = resolve_path(data, [root_key, "items"])
-	if not items or not isinstance(items, list):
-		return "None"
+    Args:
+        data: The data structure to navigate (typically a dict).
+        path_list: List of keys to traverse.
 
-	extracted = []
-	for item in items:
-		val = resolve_path(item, sub_path)
-		if val:
-			extracted.append(str(val))
+    Returns:
+        The value at the end of the path, or None if any key is missing.
+    """
+    for key in path_list:
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return None
+    return data
 
-	return " | ".join(extracted) if extracted else "None"
 
-def transform_to_llm_text(issue_list: list):
-	output_blocks = []
+def extract_list_values(data: dict, root_key: str, sub_path: list[str]) -> str:
+    """Extract and concatenate values from GitHub's nested 'items' lists.
 
-	for issue in issue_list:
-		# 1. Direct Field Extraction
-		title = issue.get("title", "N/A")
-		state = issue.get("state", "N/A")
-		url = issue.get("url", "N/A")
-		updated = issue.get("updatedAt", "N/A")
-		repo = resolve_path(issue, ["repository", "name"]) or "N/A"
+    Handles structures like crossReferencedPRs, labels, comments, etc.
 
-		# 2. List Extraction (Labels & PRs)
-		# We query the 'name' field inside labels -> items
-		labels = extract_list_values(issue, "labels", ["name"])
+    Args:
+        data: The parent dictionary containing the items list.
+        root_key: The key of the list container (e.g., "labels", "comments").
+        sub_path: Path to navigate within each item.
 
-		# We query the 'title' field inside crossReferencedPRs -> items -> source
-		prs = extract_list_values(issue, "crossReferencedPRs", ["source", "title"])
+    Returns:
+        Pipe-separated string of extracted values, or "None" if empty.
+    """
+    items = resolve_path(data, [root_key, "items"])
+    if not items or not isinstance(items, list):
+        return DEFAULT_VALUE
 
-		# 3. Deep Nested Extraction (Status & Project)
-		project_title = "N/A"
-		status = "N/A"
-		project_items = resolve_path(issue, ["projectItems", "items"])
-		comments = extract_list_values(issue, "comments", ["body"])
+    extracted = []
+    for item in items:
+        value = resolve_path(item, sub_path)
+        if value:
+            extracted.append(str(value))
 
-		if project_items and len(project_items) > 0:
-			item = project_items[0]
-			project_title = resolve_path(item, ["project", "title"]) or "N/A"
+    return " | ".join(extracted) if extracted else DEFAULT_VALUE
 
-			# Search for the Status field
-			field_values = resolve_path(item, ["fieldValues", "items"]) or []
-			for fv in field_values:
-				if resolve_path(fv, ["field", "name"]) == "Status":
-					status = fv.get("name", "N/A")
 
-		# 4. Constructing the Plate Text (Token Optimized)
-		block = (
-			f"title: {title}, state: {state}\n"
-			f"repo: {repo}, project: {project_title}\n"
-			f"status: {status}\n"
-			f"labels: {labels}\n"
-			f"PRs: {prs}\n"
-			f"url: {url}\n"
-			f"comments {comments}\n"
-			f"date: {updated}"
-		)
-		output_blocks.append(block)
+def transform_to_llm_text(issue_list: list[dict]) -> str:
+    """Transform structured issue data into LLM-optimized text format.
 
-	return "\n\n===\n\n".join(output_blocks)
+    Args:
+        issue_list: List of processed issue dictionaries.
+
+    Returns:
+        Formatted string with issue details separated by "===" markers.
+    """
+    if not issue_list:
+        return ""
+
+    output_blocks = []
+
+    for issue in issue_list:
+        # 1. Direct Field Extraction
+        title = issue.get("title", DEFAULT_VALUE)
+        state = issue.get("state", DEFAULT_VALUE)
+        url = issue.get("url", DEFAULT_VALUE)
+        updated = issue.get("updatedAt", DEFAULT_VALUE)
+        repo = resolve_path(issue, ["repository", "name"]) or DEFAULT_VALUE
+
+        # 2. List Extraction (Labels & PRs)
+        labels = extract_list_values(issue, "labels", ["name"])
+        prs = extract_list_values(issue, "crossReferencedPRs", ["source", "title"])
+        comments = extract_list_values(issue, "comments", ["body"])
+
+        # 3. Deep Nested Extraction (Status & Project)
+        project_title = DEFAULT_VALUE
+        status = DEFAULT_VALUE
+        project_items = resolve_path(issue, ["projectItems", "items"])
+
+        if project_items and len(project_items) > 0:
+            item = project_items[0]
+            project_title = resolve_path(item, ["project", "title"]) or DEFAULT_VALUE
+
+            # Search for the Status field
+            field_values = resolve_path(item, ["fieldValues", "items"]) or []
+            for field_value in field_values:
+                if resolve_path(field_value, ["field", "name"]) == "Status":
+                    status = field_value.get("name", DEFAULT_VALUE)
+                    break
+
+        # 4. Constructing the Text Block (Token Optimized)
+        block = (
+            f"title: {title}, state: {state}\n"
+            f"repo: {repo}, project: {project_title}\n"
+            f"status: {status}\n"
+            f"labels: {labels}\n"
+            f"PRs: {prs}\n"
+            f"url: {url}\n"
+            f"comments: {comments}\n"
+            f"date: {updated}"
+        )
+        output_blocks.append(block)
+
+    return "\n\n===\n\n".join(output_blocks)
