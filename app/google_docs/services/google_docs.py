@@ -4,7 +4,6 @@ import logging
 
 from app.core.utils import log_and_raise
 from app.google_docs.services.doc_generator import DocGeneratorService
-from app.google_docs.utils.constants import DEFAULT_DOC_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ class GoogleDocsService:
 	async def generate_document(
 		self,
 		replacements: dict[str, str | list[str]] | None,
-		doc_name: str | None = None,
+		doc_name: str,
 	) -> dict[str, str]:
 		"""Generate a Google Doc from template with replacements.
 
@@ -27,8 +26,7 @@ class GoogleDocsService:
 			replacements: Dictionary of key-value pairs for template replacements.
 				Keys should match template tags (without delimiters).
 				Values can be strings or lists of strings.
-			doc_name: Optional name for the generated document. If not provided,
-				uses default naming.
+			doc_name: Name for the generated document.
 
 		Returns:
 			dict: Dictionary containing the document URL.
@@ -45,11 +43,9 @@ class GoogleDocsService:
 				"Missing or invalid replacements object",
 			)
 
-		output_name = doc_name or DEFAULT_DOC_NAME
-
 		document_url = await self.doc_generator.create_doc_from_template(
 			replacements=replacements,
-			output_name=output_name,
+			output_name=doc_name,
 		)
 
 		return {"document_url": document_url}

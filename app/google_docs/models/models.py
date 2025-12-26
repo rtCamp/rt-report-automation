@@ -12,7 +12,7 @@ class GenerateDocRequest(BaseModel):
 		replacements: Dictionary of template tag replacements.
 			Keys should match the tags in your template (without delimiters).
 			Values can be strings or lists of strings.
-		doc_name: Optional custom name for the generated document.
+		doc_name: Name for the generated document.
 
 	"""
 
@@ -35,12 +35,12 @@ class GenerateDocRequest(BaseModel):
 		],
 	)
 
-	doc_name: str | None = Field(
-		None,
-		description="Optional name for the generated document",
+	doc_name: str = Field(
+		...,
+		description="Name for the generated document.",
 		min_length=1,
 		max_length=200,
-		examples=["RT Report Automation Report - 2025-12-24"],
+		examples=["RT Report Automation - 1st Dec 2025 - 24th Dec 2025"],
 	)
 
 	@field_validator("replacements")
