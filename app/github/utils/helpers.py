@@ -1,11 +1,11 @@
 """Helper functions for processing GitHub issues and project items."""
 
 from datetime import datetime
-from typing import Any
+
+from toon import encode
 
 from app.github.utils.constants import (
 	BLOCKED_ISSUE_STATUS_NAME,
-	DEFAULT_VALUE,
 )
 
 
@@ -68,7 +68,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> str:
 		)
 		processed_issues.append(processed_item)
 
-	return transform_to_llm_text(processed_issues)
+	return encode(processed_issues)
 
 
 def filter_project_items(item: dict, project_board: str) -> list[dict]:
@@ -163,111 +163,3 @@ def build_processed_issue_data(
 		processed_item["comments"] = comments
 
 	return processed_item
-
-
-def resolve_path(data: Any, path_list: list[str]) -> Any | None:
-	"""Safely navigate nested dictionary keys.
-
-	Args:
-		data: The data structure to navigate (typically a dict).
-		path_list: List of keys to traverse.
-
-	Returns:
-		The value at the end of the path, or None if any key is missing.
-
-	"""
-	for key in path_list:
-		if isinstance(data, dict):
-			data = data.get(key)
-		else:
-			return None
-	return data
-
-
-def extract_list_values(data: dict, root_key: str, sub_path: list[str]) -> str:
-	"""Extract and concatenate values from GitHub's nested 'items' lists.
-
-	Handles structures like crossReferencedPRs, labels, comments, etc.
-
-	Args:
-		data: The parent dictionary containing the items list.
-		root_key: The key of the list container (e.g., "labels", "comments").
-		sub_path: Path to navigate within each item.
-
-	Returns:
-		Pipe-separated string of extracted values, or DEFAULT_VALUE if empty.
-
-	"""
-	items = resolve_path(data, [root_key, "items"])
-	if not items or not isinstance(items, list):
-		return DEFAULT_VALUE
-
-	extracted = []
-	for item in items:
-		value = resolve_path(item, sub_path)
-		if value:
-			# This ensures all extracted text (comments, PR titles, labels)
-			# are single-line safe.
-			extracted.append(" ".join(str(value).split()))
-
-	return " | ".join(extracted) if extracted else DEFAULT_VALUE
-
-
-def transform_to_llm_text(issue_list: list[dict]) -> str:
-	"""Transform structured issue data into LLM-optimized text format.
-
-	Args:
-		issue_list: List of processed issue dictionaries.
-
-	Returns:
-		Formatted string with issue details separated by "===" markers.
-
-	"""
-	if not issue_list:
-		return ""
-
-	output_blocks = []
-
-	for issue in issue_list:
-		# 1. Direct Field Extraction
-		title = issue.get("title", DEFAULT_VALUE)
-		state = issue.get("state", DEFAULT_VALUE)
-		url = issue.get("url", DEFAULT_VALUE)
-		updated = issue.get("updatedAt", DEFAULT_VALUE)
-		repo = resolve_path(issue, ["repository", "name"]) or DEFAULT_VALUE
-
-		# 2. List Extraction (Labels & PRs)
-		labels = extract_list_values(issue, "labels", ["name"])
-		prs = extract_list_values(issue, "crossReferencedPRs", ["source", "title"])
-		comments = extract_list_values(issue, "comments", ["body"])
-
-		# 3. Deep Nested Extraction (Status & Project)
-		project_title = DEFAULT_VALUE
-		status = DEFAULT_VALUE
-		project_items = resolve_path(issue, ["projectItems", "items"])
-
-		if project_items:
-			item = project_items[0]
-			project_title = resolve_path(item, ["project", "title"]) or DEFAULT_VALUE
-
-			# Search for the Status field
-			field_values = resolve_path(item, ["fieldValues", "items"]) or []
-			for field_value in field_values:
-				if resolve_path(field_value, ["field", "name"]) == "Status":
-					status = field_value.get("name", DEFAULT_VALUE)
-					break
-
-		# 4. Constructing the Text Block (Token Optimized)
-		block = (
-			f"title: {title}, state: {state}\n"
-			f"repo: {repo}, project: {project_title}\n"
-			f"status: {status}\n"
-			f"labels: {labels}\n"
-			f"PRs: {prs}\n"
-			f"url: {url}\n"
-			f"comments: {comments}\n"
-			f"date: {updated}"
-		)
-		output_blocks.append(block)
-
-	return "\n\n===\n\n".join(output_blocks)
