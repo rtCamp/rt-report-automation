@@ -8,6 +8,7 @@ from app.core.api import register_routes
 from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
 from app.github.inngest import fetch_github_issues
+from app.google_docs.inngest import generate_google_doc
 from app.llm.inngest import summarization, summarization_workflow
 from app.slack.inngest import fetch_slack
 
@@ -35,7 +36,13 @@ register_routes(app)
 # Initialize Inngest.
 setup_inngest(
 	app,
-	[summarization_workflow, summarization, fetch_slack, fetch_github_issues],
+	[
+		summarization_workflow,
+		summarization,
+		fetch_slack,
+		fetch_github_issues,
+		generate_google_doc,
+	],
 )
 
 if __name__ == "__main__":
