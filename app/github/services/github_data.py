@@ -25,7 +25,7 @@ class GitHubDataService:
 		start_date,
 		end_date,
 		project_board,
-	) -> list[dict]:
+	) -> str:
 		"""Fetch issues from a GitHub repository within a specific date range.
 
 		Args:
@@ -36,7 +36,7 @@ class GitHubDataService:
 			project_board (str): The name of the project board to filter issues.
 
 		Returns:
-			list: A list of issues matching the criteria.
+			str: A formatted string representation of the processed issues.
 
 		"""
 		search_query = get_issue_search_query(
