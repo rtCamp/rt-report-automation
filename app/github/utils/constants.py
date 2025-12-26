@@ -11,6 +11,3 @@ GITHUB_SERVICE_FAILURE_MAX_RETRY_LIMIT = 3
 
 # GitHub Data service API rate limit per minute
 GITHUB_API_RATE_LIMIT = 10
-
-# Default value for missing fields
-DEFAULT_VALUE = "N/A"
