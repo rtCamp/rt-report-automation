@@ -38,13 +38,6 @@ class DocGeneratorService:
 			Exception: If document creation or update fails.
 
 		"""
-		# Validate inputs
-		if not output_name or not output_name.strip():
-			log_and_raise(
-				logger,
-				"Document name cannot be empty",
-			)
-
 		# Validate replacement keys
 		for key in replacements:
 			if not key or not key.strip():

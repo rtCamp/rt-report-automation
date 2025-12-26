@@ -3,7 +3,6 @@
 # Tag formatting
 TAG_PREFIX = "rtai-"
 TAG_SUFFIX = "-rtai"
-DEFAULT_DOC_NAME = "Generated Document"
 
 # Validation limits
 MAX_REPLACEMENTS_ENTRIES = 100  # Maximum number of replacement key-value pairs

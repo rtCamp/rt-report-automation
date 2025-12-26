@@ -63,8 +63,7 @@ async def generate_document(
 	"""Generate a Google Doc from template with replacements.
 
 	Args:
-		request: Document generation request containing replacements and
-			optional doc name.
+		request: Document generation request containing replacements and doc name.
 		service: GoogleDocsService instance (injected dependency).
 
 	Returns:
@@ -72,8 +71,7 @@ async def generate_document(
 
 	Raises:
 		HTTPException:
-			- 400 (Bad Request): If replacements is None, not a dict, has empty keys,
-				or doc_name is empty.
+			- 400 (Bad Request): If replacements is None, not a dict, or has empty keys.
 			- 500 (Internal Server Error): If document creation or update fails due to
 				Google API errors, authentication issues, or other unexpected errors.
 
