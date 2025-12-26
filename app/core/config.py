@@ -1,7 +1,7 @@
 """Application configuration settings."""
 
 from dotenv import load_dotenv
-from pydantic import HttpUrl, SecretStr, field_validator, model_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -53,11 +53,35 @@ class Settings(BaseSettings):
 	# Slack Configuration
 	SLACK_BOT_TOKEN: SecretStr
 
+	# Google Workspace Configuration
+	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr
+	GOOGLE_TEMPLATE_DOC_ID: str
+	GOOGLE_OUTPUT_FOLDER_ID: str
+	GOOGLE_SCOPES: str = Field(
+		default="https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents",
+		description="Comma-separated list of Google API scopes",
+	)
+
 	@classmethod
 	@field_validator("ALLOWED_ORIGINS")
 	def parse_allowed_origins(cls, v: str) -> list[str]:
 		"""Parse comma-separated origins into a list."""
 		return v.split(",") if v else []
+
+	@property
+	def google_scopes_list(self) -> list[str]:
+		"""Get Google scopes as a list.
+
+		Raises:
+			ValueError: If no valid scopes are configured.
+
+		"""
+		scopes = [s.strip() for s in self.GOOGLE_SCOPES.split(",") if s.strip()]
+		if not scopes:
+			raise ValueError(
+				"GOOGLE_SCOPES must contain at least one valid scope",
+			)
+		return scopes
 
 	@model_validator(mode="after")
 	def validate_required_secrets(self):
@@ -67,6 +91,33 @@ class Settings(BaseSettings):
 
 		if not self.SLACK_BOT_TOKEN.get_secret_value().strip():
 			raise ValueError("SLACK_BOT_TOKEN must be set and cannot be empty")
+
+		# Validate Google Workspace configuration
+		if not self.GOOGLE_SERVICE_ACCOUNT_KEY.get_secret_value().strip():
+			raise ValueError(
+				"GOOGLE_SERVICE_ACCOUNT_KEY must be set and cannot be empty",
+			)
+
+		if not self.GOOGLE_TEMPLATE_DOC_ID.strip():
+			raise ValueError(
+				"GOOGLE_TEMPLATE_DOC_ID must be set and cannot be empty",
+			)
+
+		# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/27
+		# will be dynamically created per project rather than a single static value
+		if not self.GOOGLE_OUTPUT_FOLDER_ID.strip():
+			raise ValueError(
+				"GOOGLE_OUTPUT_FOLDER_ID must be set and cannot be empty",
+			)
+
+		# Validate GOOGLE_SCOPES at initialization
+		if not self.GOOGLE_SCOPES.strip():
+			raise ValueError(
+				"GOOGLE_SCOPES must be set and cannot be empty",
+			)
+
+		# Ensure at least one valid scope exists
+		_ = self.google_scopes_list
 
 		return self
 
