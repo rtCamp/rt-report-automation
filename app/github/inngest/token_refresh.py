@@ -15,7 +15,7 @@ from app.github.utils.constants import (
 
 @inngest_client.create_function(
 	fn_id="refresh_github_access_token",
-	trigger=inngest.TriggerCron(cron="*/2 * * * *"),  # every 2 minutes
+	trigger=inngest.TriggerCron(cron="*/7 * * * *"),  # every 7 minutes
 )
 async def refresh_github_access_token(ctx: inngest.Context) -> dict:
 	"""Proactively refresh GitHub installation access token if nearing expiry.
