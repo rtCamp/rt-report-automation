@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from toon import encode
+from toon import encode as process_json_to_toon
 
 from app.github.utils.constants import (
 	BLOCKED_ISSUE_STATUS_NAME,
@@ -68,7 +68,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> str:
 		)
 		processed_issues.append(processed_item)
 
-	return encode(processed_issues)
+	return process_json_to_toon(processed_issues)
 
 
 def filter_project_items(item: dict, project_board: str) -> list[dict]:
