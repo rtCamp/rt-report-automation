@@ -4,45 +4,88 @@ import json
 import logging
 from datetime import date
 
+from app.core.utils import log_and_raise
 from app.llm.models.summarization import ProjectMetadata, UserMetadata
 
 logger = logging.getLogger(__name__)
 
 
-def format_date(dt: date) -> str:
-	"""Format date as 'December 25, 2025'.
+def to_ordinal(n: int) -> str:
+	"""Convert number to ordinal string (1st, 2nd, 3rd, etc.).
 
 	Args:
-		dt: Date object to format.
+		n: Integer to convert.
 
 	Returns:
-		str: Formatted date string.
+		str: Ordinal string representation.
+
+	Examples:
+		>>> to_ordinal(1)
+		'1st'
+		>>> to_ordinal(2)
+		'2nd'
+		>>> to_ordinal(3)
+		'3rd'
+		>>> to_ordinal(21)
+		'21st'
+		>>> to_ordinal(22)
+		'22nd'
+
+	"""
+	if 10 <= n % 100 <= 20:
+		suffix = "th"
+	else:
+		suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+	return f"{n}{suffix}"
+
+
+def format_date_to_ordinal(date_obj: date) -> str:
+	"""Format date as '1st Dec 2025'.
+
+	Args:
+		date_obj: Date object to format.
+
+	Returns:
+		str: Formatted date string with ordinal day.
 
 	Examples:
 		>>> from datetime import date
-		>>> format_date(date(2025, 12, 25))
-		'December 25, 2025'
+		>>> format_date_to_ordinal(date(2025, 12, 1))
+		'1st Dec 2025'
+		>>> format_date_to_ordinal(date(2025, 12, 25))
+		'25th Dec 2025'
 
 	"""
-	return dt.strftime("%B %d, %Y")
+	ordinal_day = to_ordinal(date_obj.day)
+	return f"{ordinal_day} {date_obj.strftime('%b %Y')}"
 
 
-def parse_llm_summary(json_str: str) -> dict:
-	"""Parse LLM JSON string output.
+def parse_llm_summary(summary_data: str | dict) -> dict:
+	"""Parse and normalize LLM summary output.
+
+	Handles both JSON string and dict inputs. Inngest may auto-deserialize
+	JSON strings between steps, so we accept both formats.
 
 	Args:
-		json_str: JSON string from LLM summarization.
+		summary_data: JSON string or dict from LLM summarization.
+			- str: '{"summary": "...", "risk_blocker_action_needed": "...", ...}'
+			- dict: {"summary": "...", "risk_blocker_action_needed": "...", ...}
 
 	Returns:
-		dict: Parsed summary data.
+		dict: Normalized summary data with camelCase fields.
+			Example: {"summary": "...", "riskBlockerActionNeeded": "...", ...}
 
 	Raises:
-		json.JSONDecodeError: If JSON is invalid.
+		json.JSONDecodeError: If JSON string is invalid.
 		ValueError: If required fields are missing.
 
 	"""
 	try:
-		data = json.loads(json_str)
+		# Convert to dict if needed
+		if isinstance(summary_data, str):
+			data = json.loads(summary_data)
+		else:
+			data = summary_data
 
 		# Validate required fields
 		required_fields = ["summary", "riskBlockerActionNeeded", "taskDetails"]
@@ -65,8 +108,19 @@ def parse_llm_summary(json_str: str) -> dict:
 		return data
 
 	except json.JSONDecodeError as e:
-		logger.error(f"Failed to parse LLM summary JSON: {e}")
-		raise
+		log_and_raise(
+			logger,
+			"Failed to parse LLM summary JSON",
+			json.JSONDecodeError,
+			cause=e,
+		)
+	except (KeyError, ValueError) as e:
+		log_and_raise(
+			logger,
+			f"Invalid LLM summary data: {e}",
+			type(e),
+			cause=e,
+		)
 
 
 def build_replacements_dict(
@@ -106,8 +160,8 @@ def build_replacements_dict(
 
 	return {
 		"projectName": project_metadata.project_name,
-		"from": format_date(project_metadata.start_date),
-		"to": format_date(project_metadata.end_date),
+		"from": format_date_to_ordinal(project_metadata.start_date),
+		"to": format_date_to_ordinal(project_metadata.end_date),
 		"name": user_metadata.user_name,
 		"projectStatus": project_metadata.project_status.value,
 		"summary": summary_data["summary"],
@@ -118,13 +172,14 @@ def build_replacements_dict(
 	}
 
 
-def generate_doc_name(project_name: str, end_date: date) -> str:
+def generate_doc_name(project_name: str, start_date: date, end_date: date) -> str:
 	"""Generate document name for Google Doc.
 
-	Format: "{project_name} Report - {formatted_end_date}"
+	Format: "{project_name} - {start_date} - {end_date}"
 
 	Args:
 		project_name: Name of the project.
+		start_date: Start date of the reporting period.
 		end_date: End date of the reporting period.
 
 	Returns:
@@ -132,11 +187,10 @@ def generate_doc_name(project_name: str, end_date: date) -> str:
 
 	Examples:
 		>>> from datetime import date
-		>>> generate_doc_name("AI Project", date(2025, 12, 25))
-		'AI Project Report - December 25, 2025'
+		>>> generate_doc_name("AI Project", date(2025, 12, 1), date(2025, 12, 25))
+		'AI Project - 1st Dec 2025 - 25th Dec 2025'
 
 	"""
-	# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/pull/57
-	# Update document name format.
-	formatted_date = format_date(end_date)
-	return f"{project_name} Report - {formatted_date}"
+	formatted_start = format_date_to_ordinal(start_date)
+	formatted_end = format_date_to_ordinal(end_date)
+	return f"{project_name} - {formatted_start} - {formatted_end}"

@@ -26,7 +26,6 @@ dependencies = [
 	"google-auth>=2.36.0",
 	"google-auth-httplib2>=0.2.0",
 	"google-api-python-client>=2.158.0",
-	"inflect>=7.4.0",
 ]
 
 [dependency-groups]
