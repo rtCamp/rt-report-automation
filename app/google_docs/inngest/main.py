@@ -119,21 +119,14 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 	except ValidationError as e:
 		log_and_raise(
 			logger,
-			"Validation error for metadata",
-			ValueError,
-			cause=e,
-		)
-	except KeyError as e:
-		log_and_raise(
-			logger,
-			"Missing required field in data",
+			f"Validation error for input data: {e}",
 			ValueError,
 			cause=e,
 		)
 	except Exception as e:
 		log_and_raise(
 			logger,
-			"Error generating Google Doc",
+			f"Failed to generate Google Doc: {e}",
 			Exception,
 			cause=e,
 		)

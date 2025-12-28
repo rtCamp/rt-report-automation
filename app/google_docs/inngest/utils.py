@@ -1,10 +1,8 @@
 """Utility functions for Google Docs Inngest integration."""
 
-import json
 import logging
 from datetime import date
 
-from app.core.utils import log_and_raise
 from app.llm.models.summarization import ProjectMetadata, UserMetadata
 
 logger = logging.getLogger(__name__)
@@ -58,69 +56,6 @@ def format_date_to_ordinal(date_obj: date) -> str:
 	"""
 	ordinal_day = to_ordinal(date_obj.day)
 	return f"{ordinal_day} {date_obj.strftime('%b %Y')}"
-
-
-def parse_llm_summary(summary_data: str | dict) -> dict:
-	"""Parse and normalize LLM summary output.
-
-	Handles both JSON string and dict inputs. Inngest may auto-deserialize
-	JSON strings between steps, so we accept both formats.
-
-	Args:
-		summary_data: JSON string or dict from LLM summarization.
-			- str: '{"summary": "...", "risk_blocker_action_needed": "...", ...}'
-			- dict: {"summary": "...", "risk_blocker_action_needed": "...", ...}
-
-	Returns:
-		dict: Normalized summary data with camelCase fields.
-			Example: {"summary": "...", "riskBlockerActionNeeded": "...", ...}
-
-	Raises:
-		json.JSONDecodeError: If JSON string is invalid.
-		ValueError: If required fields are missing.
-
-	"""
-	try:
-		# Convert to dict if needed
-		if isinstance(summary_data, str):
-			data = json.loads(summary_data)
-		else:
-			data = summary_data
-
-		# Validate required fields
-		required_fields = ["summary", "riskBlockerActionNeeded", "taskDetails"]
-		missing_fields = [field for field in required_fields if field not in data]
-
-		if missing_fields:
-			raise ValueError(f"Missing required fields in summary: {missing_fields}")
-
-		task_details = data.get("taskDetails", {})
-		required_task_fields = ["completed", "inProgress", "inReview"]
-		missing_task_fields = [
-			field for field in required_task_fields if field not in task_details
-		]
-
-		if missing_task_fields:
-			raise ValueError(
-				f"Missing required taskDetails fields: {missing_task_fields}",
-			)
-
-		return data
-
-	except json.JSONDecodeError as e:
-		log_and_raise(
-			logger,
-			"Failed to parse LLM summary JSON",
-			json.JSONDecodeError,
-			cause=e,
-		)
-	except (KeyError, ValueError) as e:
-		log_and_raise(
-			logger,
-			f"Invalid LLM summary data: {e}",
-			type(e),
-			cause=e,
-		)
 
 
 def build_replacements_dict(
