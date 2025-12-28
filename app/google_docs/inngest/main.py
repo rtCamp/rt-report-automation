@@ -36,18 +36,20 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
-			- summary_json (str | dict): LLM summary (Inngest auto-deserializes JSON)
-			- project_metadata (dict): Project metadata (name, dates, status)
-			- user_metadata (dict): User metadata (name, email)
+			- summary_json (dict): LLM summary with snake_case fields (summary,
+				risk_blocker_action_needed, task_details)
+			- project_metadata (dict): Project metadata (project_name, start_date,
+				end_date, project_status)
+			- user_metadata (dict): User metadata (user_name, user_email)
 
 	Returns:
 		dict[str, str]: Dictionary containing the document URL.
 			Example: {"document_url": "https://docs.google.com/document/d/..."}
 
 	Raises:
-		TypeError: If event data or metadata types don't match expected types.
+		TypeError: If event data types don't match expected types.
 		ValueError: If validation fails for metadata or required fields are missing.
-		json.JSONDecodeError: If summary JSON is invalid.
+		ValidationError: If Pydantic validation fails for any of the input models.
 		Exception: For any other errors during document generation.
 
 	"""
@@ -55,21 +57,40 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		event_data = ctx.event.data
 
 		# Extract and validate required fields
-		summary_json = event_data.get("summary_json")
-		project_data = event_data.get("project_metadata")
-		user_data = event_data.get("user_metadata")
+		required_fields = {
+			"summary_json": ("summary_json", dict),
+			"project_metadata": ("project_metadata", dict),
+			"user_metadata": ("user_metadata", dict),
+		}
 
-		if not summary_json:
-			raise ValueError("Missing required field: summary_json")
-		if not project_data:
-			raise ValueError("Missing required field: project_metadata")
-		if not user_data:
-			raise ValueError("Missing required field: user_metadata")
+		for field_key, (field_name, expected_type) in required_fields.items():
+			field_value = event_data.get(field_key)
 
-		# Parse and validate all data with Pydantic models
-		project_metadata = ProjectMetadata.model_validate(project_data)
-		user_metadata = UserMetadata.model_validate(user_data)
-		summary_metadata = ProjectSummarySchema.model_validate(summary_json)
+			if not field_value:
+				log_and_raise(
+					logger,
+					f"Missing required field: {field_name}",
+					ValueError,
+				)
+
+			if not isinstance(field_value, expected_type):
+				log_and_raise(
+					logger,
+					f"{field_name} must be {expected_type.__name__}, "
+					f"got {type(field_value).__name__}",
+					TypeError,
+				)
+
+		# Validate with Pydantic models
+		project_metadata = ProjectMetadata.model_validate(
+			event_data["project_metadata"],
+		)
+		user_metadata = UserMetadata.model_validate(
+			event_data["user_metadata"],
+		)
+		summary_metadata = ProjectSummarySchema.model_validate(
+			event_data["summary_json"],
+		)
 
 		# Build replacements dictionary for Google Docs template
 		# 'by_alias=True' to convert field names to camelCase
