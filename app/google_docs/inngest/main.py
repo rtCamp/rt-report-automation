@@ -6,15 +6,18 @@ import inngest
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
-from app.core.utils import validate
+from app.core.utils import log_and_raise
 from app.google_docs.dependencies import get_google_docs_service
 from app.google_docs.inngest.constants import GOOGLE_DOCS_GENERATION_MAX_RETRY
 from app.google_docs.inngest.utils import (
 	build_replacements_dict,
 	generate_doc_name,
-	parse_llm_summary,
 )
-from app.llm.models.summarization import ProjectMetadata, UserMetadata
+from app.llm.models.summarization import (
+	ProjectMetadata,
+	ProjectSummarySchema,
+	UserMetadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
-			- summary_json (str): JSON string from LLM summarization
+			- summary_json (str | dict): LLM summary (Inngest auto-deserializes JSON)
 			- project_metadata (dict): Project metadata (name, dates, status)
 			- user_metadata (dict): User metadata (name, email)
 
@@ -50,7 +53,6 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 	"""
 	try:
 		event_data = ctx.event.data
-		validate(event_data, dict)
 
 		# Extract and validate required fields
 		summary_json = event_data.get("summary_json")
@@ -64,26 +66,15 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		if not user_data:
 			raise ValueError("Missing required field: user_metadata")
 
-		validate(summary_json, str)
-		validate(project_data, dict)
-		validate(user_data, dict)
-
-		# Parse and validate metadata
+		# Parse and validate all data with Pydantic models
 		project_metadata = ProjectMetadata.model_validate(project_data)
 		user_metadata = UserMetadata.model_validate(user_data)
-
-		# Parse LLM summary JSON
-		ctx.logger.info("Parsing LLM summary output")
-		if not isinstance(summary_json, str):
-			raise TypeError(
-				f"Expected summary_json to be str, got {type(summary_json)}",
-			)
-		summary_data = parse_llm_summary(summary_json)
+		summary_metadata = ProjectSummarySchema.model_validate(summary_json)
 
 		# Build replacements dictionary for Google Docs template
-		ctx.logger.info("Building replacements dictionary")
+		# 'by_alias=True' to convert field names to camelCase
 		replacements = build_replacements_dict(
-			summary_data=summary_data,
+			summary_data=summary_metadata.model_dump(by_alias=True),
 			project_metadata=project_metadata,
 			user_metadata=user_metadata,
 		)
@@ -91,26 +82,37 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		# Generate document name
 		doc_name = generate_doc_name(
 			project_name=project_metadata.project_name,
+			start_date=project_metadata.start_date,
 			end_date=project_metadata.end_date,
 		)
-		ctx.logger.info(f"Generating document: {doc_name}")
 
-		# Get Google Docs service and generate document
+		# Get Google Docs service
 		google_docs_service = get_google_docs_service()
-		result = await google_docs_service.generate_document(
+
+		# Return generated document URL
+		return await google_docs_service.generate_document(
 			replacements=replacements,
 			doc_name=doc_name,
 		)
 
-		ctx.logger.info(f"Document generated successfully: {result['document_url']}")
-		return result
-
 	except ValidationError as e:
-		ctx.logger.error(f"Validation error for metadata: {e}")
-		raise ValueError(f"Invalid metadata: {e}")
+		log_and_raise(
+			logger,
+			"Validation error for metadata",
+			ValueError,
+			cause=e,
+		)
 	except KeyError as e:
-		ctx.logger.error(f"Missing required field in data: {e}")
-		raise ValueError(f"Missing required field: {e}")
+		log_and_raise(
+			logger,
+			"Missing required field in data",
+			ValueError,
+			cause=e,
+		)
 	except Exception as e:
-		ctx.logger.error(f"Error generating Google Doc: {e}")
-		raise
+		log_and_raise(
+			logger,
+			"Error generating Google Doc",
+			Exception,
+			cause=e,
+		)
