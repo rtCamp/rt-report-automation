@@ -1,7 +1,5 @@
 """Inngest workflow for LLM-based summarization."""
 
-import json
-
 import inngest
 
 from app.core.adapters import inngest_client
@@ -53,9 +51,7 @@ async def summarization_workflow(ctx: inngest.Context) -> str:
 		),
 	)
 
-	# Convert github_issues_data to JSON string
-	github_issues_data = json.dumps(github_issues_data)
-
+	# Both slack_data and github_issues_data are already TOON strings
 	# Prepare data for the summarization step
 	data = dict(ctx.event.data)
 	data["data"] = [slack_data, github_issues_data]
