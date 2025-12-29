@@ -60,9 +60,13 @@ OLD_FORMAT_PATTERNS = {
 	],
 }
 
-# Combined patterns for backward compatibility (deprecated)
+# Combined patterns for backward compatibility (will be removed in future)
 # Use NEW_FORMAT_PATTERNS or OLD_FORMAT_PATTERNS instead
 QUESTION_PATTERNS = {
-	**NEW_FORMAT_PATTERNS,
-	**OLD_FORMAT_PATTERNS,
+	key: list(
+		dict.fromkeys(
+			NEW_FORMAT_PATTERNS.get(key, []) + OLD_FORMAT_PATTERNS.get(key, [])
+		),
+	)
+	for key in set(NEW_FORMAT_PATTERNS) | set(OLD_FORMAT_PATTERNS)
 }

@@ -218,7 +218,7 @@ class SlackService:
 			except Exception as e:
 				error_msg = (
 					f"Failed to parse standup thread {message['ts']}. "
-					"Falling back to raw format."
+					"Skipping thread; no raw fallback is implemented."
 				)
 				self.logger.warning("%s: %s", error_msg, e)
 

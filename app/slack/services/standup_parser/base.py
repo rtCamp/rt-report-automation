@@ -2,9 +2,19 @@
 
 import re
 
+from app.slack.constants import NEW_FORMAT_IDENTIFIER
+
 
 class BaseParser:
 	"""Base parser with shared utilities for text normalization and extraction."""
+
+	# Parameters tuned for Slack standup question detection:
+	# - MIN_QUESTION_LINE_LENGTH: skip short noise lines (bullets, greetings, etc.).
+	# - MAX_HEADER_MATCH_OFFSET: treat matches near the start of the line as headers.
+	# - LONG_LINE_LENGTH_THRESHOLD: relax the offset constraint for verbose lines where
+	MIN_QUESTION_LINE_LENGTH = 10
+	MAX_HEADER_MATCH_OFFSET = 15
+	LONG_LINE_LENGTH_THRESHOLD = 100
 
 	def _normalize_text(self, text: str, *, preserve_newlines: bool = False) -> str:
 		"""Normalize Slack message text by removing formatting.
@@ -84,7 +94,7 @@ class BaseParser:
 
 		return ""
 
-	def _get_message_text(self, message: dict) -> str:
+	def get_message_text(self, message: dict) -> str:
 		"""Extract text from a Slack message (blocks or text field).
 
 		Args:
@@ -125,3 +135,128 @@ class BaseParser:
 					text_parts.append(section_text.strip())
 
 		return "\n".join(text_parts)
+
+	def normalize_for_matching(
+		self,
+		text: str,
+		*,
+		strip_headers: bool | None = None,
+	) -> str:
+		"""Normalize text for question matching with optional header stripping."""
+		if not text:
+			return ""
+
+		if strip_headers is None:
+			strip_headers = self._should_strip_headers()
+
+		text = text.lower()
+		text = text.replace("\u2019", "'").replace("\u2018", "'")
+		text = re.sub(r"[*_]+", "", text)
+		text = re.sub(r"(\w+)'([a-z]+)", r"\1\2", text)
+		if strip_headers:
+			text = re.sub(r"^#+\s*", "", text)
+		text = re.sub(r"[^\w\s]", "", text)
+		text = re.sub(r"^\d+[\.\)]\s*", "", text)
+		text = re.sub(r"\s+", " ", text)
+		return text.strip()
+
+	def _should_strip_headers(self) -> bool:
+		"""Whether to strip markdown headers when normalizing question lines."""
+		return True
+
+	def _should_skip_first_line(self, original_text: str) -> bool:
+		"""Whether to skip the first line when preparing lines."""
+		if not original_text:
+			return False
+
+		lines = original_text.split("\n")
+		if not lines:
+			return False
+
+		first_line = lines[0].strip().lower()
+		normalized_identifier = NEW_FORMAT_IDENTIFIER.lower().strip()
+		return first_line.startswith(normalized_identifier)
+
+	def message_has_questions(self, message: dict) -> bool:
+		"""Determine whether the message contains any recognizable questions."""
+		message_text = self.get_message_text(message)
+		if not message_text.strip():
+			return False
+
+		for line in self.prepare_lines(message_text):
+			if self.is_question_line(line.strip()):
+				return True
+		return False
+
+	def prepare_lines(self, text: str) -> list[str]:
+		"""Prepare normalized lines for downstream parsing."""
+		should_skip = self._should_skip_first_line(text)
+		normalized_text = self._normalize_text(text, preserve_newlines=True)
+		lines = normalized_text.split("\n")
+		if should_skip and lines:
+			return lines[1:]
+		return lines
+
+	def is_question_line(self, line: str) -> str | None:
+		"""Identify the question key using parameters for short, early matches."""
+		normalized = self.normalize_for_matching(
+			line,
+			strip_headers=self._should_strip_headers(),
+		)
+		if not normalized or len(normalized) < self.MIN_QUESTION_LINE_LENGTH:
+			return None
+
+		for question_key, patterns in self.question_patterns.items():
+			for pattern in patterns:
+				pos = normalized.find(pattern)
+				if pos >= 0 and (
+					pos <= self.MAX_HEADER_MATCH_OFFSET
+					or len(normalized) < self.LONG_LINE_LENGTH_THRESHOLD
+				):
+					return question_key
+		return None
+
+	def parse_message_text(self, text: str) -> dict[str, list[str]]:
+		"""Parse normalized text into structured question -> answers mapping."""
+		result: dict[str, list[str]] = {}
+		current_question: str | None = None
+		current_answer_lines: list[str] = []
+
+		for original_line in self.prepare_lines(text):
+			line = original_line.strip()
+			if not line or line == "---":
+				continue
+
+			question_key = self.is_question_line(line)
+
+			if question_key:
+				if current_question and current_answer_lines:
+					answer_text = "\n".join(current_answer_lines).strip()
+					if answer_text:
+						result.setdefault(current_question, []).append(answer_text)
+					current_answer_lines = []
+
+				current_question = question_key
+
+				after_separators = re.split(r"[?:]\s+", original_line, maxsplit=1)
+				if len(after_separators) > 1:
+					after_question = after_separators[1].strip()
+					if after_question:
+						normalized_after = self.normalize_for_matching(after_question)
+						patterns = self.question_patterns[question_key]
+						if not any(p in normalized_after for p in patterns):
+							cleaned = self._clean_answer_line(after_question)
+							if cleaned:
+								current_answer_lines.append(cleaned)
+			else:
+				if current_question:
+					cleaned_line = self._clean_answer_line(line)
+					if cleaned_line:
+						current_answer_lines.append(cleaned_line)
+
+		if current_question and current_answer_lines:
+			answer_text = "\n".join(current_answer_lines).strip()
+			if answer_text:
+				result.setdefault(current_question, []).append(answer_text)
+
+		return result

@@ -10,6 +10,7 @@ from toon import encode as process_json_to_toon
 
 from app.slack.constants import STANDARD_QUESTIONS
 from app.slack.models.models import StandupAnswer, StandupEntry
+from app.slack.services.standup_parser.base import BaseParser
 from app.slack.services.standup_parser.new_format_parser import NewFormatParser
 from app.slack.services.standup_parser.old_format_parser import OldFormatParser
 
@@ -39,9 +40,9 @@ class StandupParser:
 			"new" if new format, "old" if old format.
 
 		"""
-		return "new" if self._new_parser._is_new_format_message(message) else "old"
+		return "new" if self._new_parser.is_new_format_message(message) else "old"
 
-	def _get_parser_for_message(self, message: dict):
+	def _get_parser_for_message(self, message: dict) -> BaseParser:
 		"""Get appropriate parser for a message.
 
 		Args:
@@ -89,14 +90,14 @@ class StandupParser:
 
 			parser = self._get_parser_for_message(message)
 
-			if not parser._message_has_questions(message):
+			if not parser.message_has_questions(message):
 				continue
 
-			message_text = parser._get_message_text(message)
+			message_text = parser.get_message_text(message)
 			if not message_text.strip():
 				continue
 
-			parsed_answers = parser._parse_message_text(message_text)
+			parsed_answers = parser.parse_message_text(message_text)
 
 			if not parsed_answers:
 				continue
