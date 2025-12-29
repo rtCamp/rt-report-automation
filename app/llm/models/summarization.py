@@ -3,7 +3,7 @@
 import datetime
 from enum import Enum
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.llm.models import LLMProvider, SupportedModels
 
@@ -141,6 +141,8 @@ class SummarizeResponse(BaseModel):
 class TaskDetails(BaseModel):
 	"""Task details schema."""
 
+	model_config = ConfigDict(populate_by_name=True)
+
 	completed: str
 	in_progress: str = Field(alias="inProgress")
 	in_review: str = Field(alias="inReview")
@@ -148,6 +150,8 @@ class TaskDetails(BaseModel):
 
 class ProjectSummarySchema(BaseModel):
 	"""Project summary schema."""
+
+	model_config = ConfigDict(populate_by_name=True)
 
 	summary: str
 	risk_blocker_action_needed: str = Field(alias="riskBlockerActionNeeded")
