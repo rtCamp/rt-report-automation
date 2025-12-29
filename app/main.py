@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.logger import LogLevels, configure_logging
 from app.github.inngest import fetch_github_issues
 from app.github.inngest.token_refresh import refresh_github_access_token
+from app.google_docs.inngest import generate_google_doc
 from app.llm.inngest import summarization, summarization_workflow
 from app.slack.inngest import fetch_slack
 
@@ -41,6 +42,7 @@ setup_inngest(
 		summarization,
 		fetch_slack,
 		fetch_github_issues,
+		generate_google_doc,
 		refresh_github_access_token,
 	],
 )
