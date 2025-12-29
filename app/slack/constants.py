@@ -16,6 +16,11 @@ STANDARD_QUESTIONS = [
 	"demo",
 ]
 
+# Parser thresholds (all measured in characters).
+STANDUP_MIN_QUESTION_LINE_LENGTH = 10
+STANDUP_MAX_HEADER_MATCH_OFFSET = 15
+STANDUP_LONG_LINE_LENGTH_THRESHOLD = 100
+
 # ============================================================================
 # New Format Constants
 # ============================================================================

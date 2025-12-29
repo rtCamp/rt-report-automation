@@ -4,12 +4,13 @@ This module provides a unified parser interface that automatically
 detects and routes to the appropriate format parser (new or old).
 """
 
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from toon import encode as process_json_to_toon
 
 from app.slack.constants import STANDARD_QUESTIONS
-from app.slack.models.models import StandupAnswer, StandupEntry
+from app.slack.models.models import DailyUpdateEntry, DailyUpdateQuestionAnswer
 from app.slack.services.standup_parser.base import BaseParser
 from app.slack.services.standup_parser.new_format_parser import NewFormatParser
 from app.slack.services.standup_parser.old_format_parser import OldFormatParser
@@ -59,7 +60,7 @@ class StandupParser:
 		self,
 		messages: list[dict],
 		thread_timestamp: float,
-	) -> list[StandupEntry]:
+	) -> list[DailyUpdateEntry]:
 		"""Parse a Slack thread into structured standup data.
 
 		Automatically detects format for each message and uses appropriate parser.
@@ -80,7 +81,7 @@ class StandupParser:
 			messages[1:] if first_message_is_bot and len(messages) > 1 else messages
 		)
 
-		entries: list[StandupEntry] = []
+		entries: list[DailyUpdateEntry] = []
 
 		for message in thread_replies:
 			has_text = "text" in message and message["text"].strip()
@@ -108,7 +109,7 @@ class StandupParser:
 				tz=UTC,
 			).strftime("%B %d, %Y")
 
-			entry = StandupEntry(
+			entry = DailyUpdateEntry(
 				date=message_date,
 				timestamp=message_ts,
 			)
@@ -117,7 +118,7 @@ class StandupParser:
 				for answer_text in answer_list:
 					if answer_text:
 						entry.answers.setdefault(question_key, []).append(
-							StandupAnswer(
+							DailyUpdateQuestionAnswer(
 								question_key=question_key,
 								text=answer_text,
 							),
@@ -128,49 +129,46 @@ class StandupParser:
 
 		return entries
 
+	def _group_entries_by_date(
+		self,
+		entries: list[DailyUpdateEntry],
+	) -> dict[str, list[DailyUpdateEntry]]:
+		"""Group entries by date while preserving insertion order per date."""
+		grouped: dict[str, list[DailyUpdateEntry]] = defaultdict(list)
+		for entry in entries:
+			grouped[entry.date].append(entry)
+		return grouped
+
+	def _collect_answer_texts(self, entry: DailyUpdateEntry) -> dict[str, list[str]]:
+		"""Return normalized answer text lists for each standard question."""
+		normalized_answers: dict[str, list[str]] = {}
+		for question_key in STANDARD_QUESTIONS:
+			answer_texts = [
+				answer.text.strip()
+				for answer in entry.answers.get(question_key, [])
+				if answer.text.strip()
+			]
+			if answer_texts:
+				normalized_answers[question_key] = answer_texts
+		return normalized_answers
+
 	def _format_entries_as_dict(
 		self,
-		entries: list[StandupEntry],
+		entries: list[DailyUpdateEntry],
 	) -> list[dict]:
-		"""Format standup entries as dictionary structure grouped by date.
-
-		Groups entries by date and returns a list of dictionaries with date
-		and standup_entries for each date.
-
-		Args:
-			entries: List of parsed standup entries.
-
-		Returns:
-			List of dictionaries with entries grouped by date.
-
-		"""
+		"""Format standup entries as dictionary structure grouped by date."""
 		if not entries:
 			return []
 
-		entries_by_date: dict[str, list[StandupEntry]] = {}
-		for entry in entries:
-			if entry.date not in entries_by_date:
-				entries_by_date[entry.date] = []
-			entries_by_date[entry.date].append(entry)
-
+		entries_by_date = self._group_entries_by_date(entries)
 		result = []
-		for date_str in sorted(entries_by_date.keys()):
-			date_entries = entries_by_date[date_str]
-			standup_entries_list = []
 
-			for entry in date_entries:
-				entry_data = {}
-				for question_key in STANDARD_QUESTIONS:
-					if question_key in entry.answers and entry.answers[question_key]:
-						answer_texts = []
-						for answer in entry.answers[question_key]:
-							answer_text = answer.text.strip()
-							if answer_text:
-								answer_texts.append(answer_text)
-						if answer_texts:
-							entry_data[question_key] = answer_texts
-				if entry_data:
-					standup_entries_list.append(entry_data)
+		for date_str in sorted(entries_by_date.keys()):
+			standup_entries_list = []
+			for entry in entries_by_date[date_str]:
+				entry_payload = self._collect_answer_texts(entry)
+				if entry_payload:
+					standup_entries_list.append(entry_payload)
 
 			if standup_entries_list:
 				result.append(
@@ -182,7 +180,7 @@ class StandupParser:
 
 		return result
 
-	def format_entries_as_toon(self, entries: list[StandupEntry]) -> str:
+	def format_entries_as_toon(self, entries: list[DailyUpdateEntry]) -> str:
 		"""Format standup entries as TOON format.
 
 		Args:

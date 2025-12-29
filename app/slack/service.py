@@ -6,6 +6,7 @@ from slack_sdk import WebClient
 from toon import encode as process_json_to_toon
 
 from app.core.config import settings
+from app.core.utils import log_and_raise
 from app.slack.constants import STANDUP_WORKFLOW_NAME
 from app.slack.services.standup_parser.standup_parser import StandupParser
 
@@ -42,10 +43,15 @@ class SlackService:
 				if channel["name"] == channel_name:
 					return channel["id"]
 
-		except Exception as e:
-			self.logger.error(f"Exception occurred while fetching channels: {e}")
-			raise
-		return None
+			return None
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching channels",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 	def _get_messages(
 		self,
@@ -86,10 +92,15 @@ class SlackService:
 					self.logger.error(f"Error fetching messages: {response['error']}")
 					break
 
-		except Exception as e:
-			self.logger.error(f"Exception occurred while fetching messages: {e}")
-			raise
-		return messages
+			return messages
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching messages",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 	def _filter_messages_by_workflow(
 		self,
@@ -161,10 +172,15 @@ class SlackService:
 					)
 					break
 
-		except Exception as e:
-			self.logger.error(f"Exception occurred while fetching thread messages: {e}")
-			raise
-		return messages
+			return messages
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching thread messages",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 	def get_standups(
 		self,

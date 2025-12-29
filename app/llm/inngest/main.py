@@ -1,5 +1,7 @@
 """Inngest workflow for LLM-based summarization."""
 
+import json
+
 import inngest
 
 from app.core.adapters import inngest_client

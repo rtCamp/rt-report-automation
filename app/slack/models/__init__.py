@@ -1,8 +1,8 @@
 """Slack models package initialization."""
 
-from app.slack.models.models import StandupAnswer, StandupEntry
+from app.slack.models.models import DailyUpdateEntry, DailyUpdateQuestionAnswer
 
 __all__ = [
-	"StandupAnswer",
-	"StandupEntry",
+	"DailyUpdateEntry",
+	"DailyUpdateQuestionAnswer",
 ]
