@@ -15,6 +15,7 @@ class BaseParser:
 	MIN_QUESTION_LINE_LENGTH = 10
 	MAX_HEADER_MATCH_OFFSET = 15
 	LONG_LINE_LENGTH_THRESHOLD = 100
+	question_patterns: dict[str, list[str]] = {}
 
 	def _normalize_text(self, text: str, *, preserve_newlines: bool = False) -> str:
 		"""Normalize Slack message text by removing formatting.
