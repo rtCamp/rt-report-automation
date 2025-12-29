@@ -70,9 +70,15 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 		data=data,
 	)
 
+	# Ensure the summary is a dictionary, not a JSON string
+	if isinstance(summary_json, str):
+		summary_data = json.loads(summary_json)
+	else:
+		summary_data = summary_json
+
 	# Step 4: Generate Google Doc from summary
 	google_docs_data = {
-		"summary_json": summary_json,
+		"summary_json": summary_data,
 		"project_metadata": ctx.event.data.get("project_metadata"),
 		"user_metadata": ctx.event.data.get("user_metadata"),
 	}

@@ -56,31 +56,6 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 	try:
 		event_data = ctx.event.data
 
-		# Extract and validate required fields
-		required_fields = {
-			"summary_json": ("summary_json", dict),
-			"project_metadata": ("project_metadata", dict),
-			"user_metadata": ("user_metadata", dict),
-		}
-
-		for field_key, (field_name, expected_type) in required_fields.items():
-			field_value = event_data.get(field_key)
-
-			if not field_value:
-				log_and_raise(
-					logger,
-					f"Missing required field: {field_name}",
-					ValueError,
-				)
-
-			if not isinstance(field_value, expected_type):
-				log_and_raise(
-					logger,
-					f"{field_name} must be {expected_type.__name__}, "
-					f"got {type(field_value).__name__}",
-					TypeError,
-				)
-
 		# Validate with Pydantic models
 		project_metadata = ProjectMetadata.model_validate(
 			event_data["project_metadata"],
@@ -93,7 +68,7 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		)
 
 		# Build replacements dictionary for Google Docs template
-		# 'by_alias=True' to convert field names to camelCase
+		# 'by_alias=True' to use alias names (camelCase) defined in the model fields
 		replacements = build_replacements_dict(
 			summary_data=summary_metadata.model_dump(by_alias=True),
 			project_metadata=project_metadata,
@@ -120,7 +95,7 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		log_and_raise(
 			logger,
 			f"Validation error for input data: {e}",
-			ValueError,
+			ValidationError,
 			cause=e,
 		)
 	except Exception as e:
