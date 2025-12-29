@@ -5,7 +5,7 @@ TAG_PREFIX = "rtai-"
 TAG_SUFFIX = "-rtai"
 
 # Validation limits
-MAX_REPLACEMENTS_ENTRIES = 100  # Maximum number of replacement key-value pairs
+MAX_REPLACEMENT_ENTRIES = 100  # Maximum number of replacement key-value pairs
 
 
 def get_template_tag(key: str) -> str:

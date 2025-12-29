@@ -25,7 +25,7 @@ class GitHubDataService:
 		start_date,
 		end_date,
 		project_board,
-	) -> list[dict]:
+	) -> str:
 		"""Fetch issues from a GitHub repository within a specific date range.
 
 		Args:
@@ -36,7 +36,7 @@ class GitHubDataService:
 			project_board (str): The name of the project board to filter issues.
 
 		Returns:
-			list: A list of issues matching the criteria.
+			str: A formatted string representation of the processed issues.
 
 		"""
 		search_query = get_issue_search_query(
@@ -49,6 +49,7 @@ class GitHubDataService:
 		issues: list[dict] = []
 		issues_pagination_cursor: str | None = None
 		gh_access_token = await self.auth.get_access_token()
+		retried_auth = False
 
 		async with httpx.AsyncClient() as client:
 			while True:
@@ -65,17 +66,24 @@ class GitHubDataService:
 				)
 
 				if response.status_code != 200:
-					if response.status_code == 401:
+					if response.status_code in (401, 403):
 						redis_gh_access_token = redis_client.get(
 							GITHUB_ACCESS_TOKEN_KEY,
 						)
-
-						# If the stored token is invalid, delete it from Redis
+						# If the stored token matches, invalidate it
 						if redis_gh_access_token == gh_access_token:
 							redis_client.delete(GITHUB_ACCESS_TOKEN_KEY)
 
+						if not retried_auth:
+							# Force refresh token and retry once
+							gh_access_token = await self.auth.get_access_token(
+								force_refresh=True,
+							)
+							retried_auth = True
+							continue
+
 						raise AuthenticationError(
-							"""GitHub GraphQL API returned 401 Unauthorized""",
+							"GitHub API unauthorized/forbidden after retry",
 						)
 
 					raise Exception(

@@ -1,5 +1,6 @@
 """Authentication service layer for GitHub integration."""
 
+import asyncio
 import time
 from datetime import UTC, datetime
 
@@ -10,7 +11,12 @@ from fastapi import HTTPException
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.exceptions import InternalServerError
-from app.github.utils.constants import GITHUB_ACCESS_TOKEN_KEY
+from app.github.utils.constants import (
+	GITHUB_ACCESS_TOKEN_KEY,
+	GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
+	GITHUB_TOKEN_REFRESH_LOCK_KEY,
+	GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
+)
 
 
 class GitHubAuthService:
@@ -49,12 +55,54 @@ class GitHubAuthService:
 				"Failed to generate JWT",
 			)
 
-	async def get_access_token(self) -> str:
-		"""Exchange JWT for a GitHub App installation access token."""
+	async def get_access_token(self, *, force_refresh: bool = False) -> str:
+		"""Exchange JWT for a GitHub App installation access token with a Redis lock.
+
+		- Returns cached token if present and not forcing refresh.
+		- If missing, acquires an NX lock so only one worker refreshes the token.
+		- If lock is held, waits briefly for another worker to populate the token.
+
+		Args:
+			force_refresh (bool): Whether to force a token refresh.
+
+		Raises:
+			InternalServerError: If token refresh fails or times out.
+
+		Returns:
+			str: The GitHub installation access token.
+
+		"""
 		cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
-		if cached_token is not None:
+		if cached_token is not None and not force_refresh:
 			return str(cached_token)
 
+		# If the caller forces refresh, clear any existing token first
+		if force_refresh and cached_token is not None:
+			redis_client.delete(GITHUB_ACCESS_TOKEN_KEY)
+
+		# Try to acquire a short-lived refresh lock to prevent concurrent refreshes
+		have_lock = redis_client.set(
+			GITHUB_TOKEN_REFRESH_LOCK_KEY,
+			"1",
+			nx=True,
+			ex=GITHUB_TOKEN_REFRESH_LOCK_TTL_SECONDS,
+		)
+
+		if not have_lock:
+			# Another worker is refreshing; wait for the token to appear
+			for _ in range(10):  # ~5 seconds total wait
+				await asyncio.sleep(0.5)
+				cached_token = redis_client.get(GITHUB_ACCESS_TOKEN_KEY)
+				if cached_token:
+					return str(cached_token)
+
+			# Still no token available; surface a transient error
+			raise InternalServerError(
+				"Token refresh in progress",
+				"Unable to read refreshed token from Redis",
+			)
+
+		# We have the lock; perform the token exchange
 		jwt_token = self._generate_app_signed_jwt()
 		installation_id = settings.GITHUB_INSTALLATION_ID.get_secret_value()
 		url = (
@@ -84,12 +132,20 @@ class GitHubAuthService:
 				access_token_expiry.replace("Z", "+00:00"),
 			)
 
-			# Calculate TTL in seconds, subtract 60s buffer
+			# Calculate TTL in seconds with pre-refresh buffer
 			ttl_seconds = int(
-				(expiry_dt - datetime.now(UTC)).total_seconds() - 60,
+				(expiry_dt - datetime.now(UTC)).total_seconds()
+				- GITHUB_ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
 			)
 
-			# Cache the token in Redis
+			# Ensure the TTL is positive; otherwise, treat the token as invalid
+			if ttl_seconds <= 0:
+				raise InternalServerError(
+					"Received GitHub access token with non-positive TTL",
+					"Token is already expired or expires within the configured buffer",
+				)
+
+			# Cache the token in Redis with a valid TTL
 			redis_client.set(
 				GITHUB_ACCESS_TOKEN_KEY,
 				access_token_value,

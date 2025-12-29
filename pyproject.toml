@@ -26,6 +26,7 @@ dependencies = [
 	"google-auth>=2.36.0",
 	"google-auth-httplib2>=0.2.0",
 	"google-api-python-client>=2.158.0",
+	"python-toon>=0.1.3",
 ]
 
 [dependency-groups]
@@ -36,6 +37,9 @@ exclude = [".venv", "migrations"]
 lint.ignore = [
 	"W191", # Ignore indentation with tabs.
 	"D206", # Ignore indentation with tabs in docstrings.
+	"D203", # Incompatible with D211; we prefer no blank line before class
+	"D213", # Incompatible with D212; we prefer summary on first line
+	"COM812", # Conflicts with formatter
 ]
 lint.extend-select = [
 	"D",   # Docstring rules

@@ -24,7 +24,7 @@ from app.llm.models.summarization import GitHubMetadata, ProjectMetadata
 		period=datetime.timedelta(minutes=1),
 	),
 )
-async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
+async def fetch_github_issues(ctx: inngest.Context) -> str:
 	"""Inngest function to fetch GitHub issues within a given date range.
 
 	Args:
@@ -33,8 +33,7 @@ async def fetch_github_issues(ctx: inngest.Context) -> list[dict]:
 			current function execution.
 
 	Returns:
-		list[dict]: A list of dictionaries, where each dictionary represents
-			a GitHub issue with its metadata
+		str: A formatted string representation of the processed issues.
 
 	Raises:
 		TypeError: If event data or metadata types don't match expected types.

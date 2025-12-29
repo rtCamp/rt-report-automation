@@ -2,7 +2,11 @@
 
 from datetime import datetime
 
-from app.github.utils.constants import BLOCKED_ISSUE_STATUS_NAME
+from toon import encode as process_json_to_toon
+
+from app.github.utils.constants import (
+	BLOCKED_ISSUE_STATUS_NAME,
+)
 
 
 def format_to_yymmdd(iso_date: str) -> str:
@@ -24,7 +28,7 @@ def format_to_yymmdd(iso_date: str) -> str:
 	return f"{yy}-{mm}-{dd}"
 
 
-def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dict]:
+def get_processed_issue_list(issues: list[dict], project_board: str) -> str:
 	"""Filter and process GitHub issues for a specific project board.
 
 	- Keeps only project items belonging to the given project board.
@@ -38,7 +42,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 		project_board (str): Name of the project board to filter issues.
 
 	Returns:
-		list[dict]: Processed and filtered issues.
+		str: A formatted string representation of the processed issues.
 
 	"""
 	processed_issues: list[dict] = []
@@ -64,7 +68,7 @@ def get_processed_issue_list(issues: list[dict], project_board: str) -> list[dic
 		)
 		processed_issues.append(processed_item)
 
-	return processed_issues
+	return process_json_to_toon(processed_issues)
 
 
 def filter_project_items(item: dict, project_board: str) -> list[dict]:
