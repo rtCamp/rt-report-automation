@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.google_docs.utils.constants import MAX_REPLACEMENTS_ENTRIES
+from app.google_docs.utils.constants import MAX_REPLACEMENT_ENTRIES
 
 
 class GenerateDocRequest(BaseModel):
@@ -61,10 +61,10 @@ class GenerateDocRequest(BaseModel):
 			ValueError: If the dictionary exceeds maximum allowed entries.
 
 		"""
-		if len(v) > MAX_REPLACEMENTS_ENTRIES:
+		if len(v) > MAX_REPLACEMENT_ENTRIES:
 			msg = (
 				f"Replacements dictionary exceeds maximum allowed entries. "
-				f"Maximum: {MAX_REPLACEMENTS_ENTRIES}, provided: {len(v)}"
+				f"Maximum: {MAX_REPLACEMENT_ENTRIES}, provided: {len(v)}"
 			)
 			raise ValueError(msg)
 
