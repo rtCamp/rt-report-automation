@@ -1,12 +1,14 @@
 """Service for interacting with Slack API."""
 
 import logging
-from datetime import UTC, datetime
 
 from slack_sdk import WebClient
+from toon import encode as process_json_to_toon
 
 from app.core.config import settings
+from app.core.utils import log_and_raise
 from app.slack.constants import STANDUP_WORKFLOW_NAME
+from app.slack.services.standup_parser.standup_parser import StandupParser
 
 
 class SlackService:
@@ -16,6 +18,7 @@ class SlackService:
 		"""Initialize the SlackService."""
 		self.client = WebClient(token=settings.SLACK_BOT_TOKEN.get_secret_value())
 		self.logger = logging.getLogger(__name__)
+		self.parser = StandupParser()
 
 	def _get_channel_id(self, channel_name: str) -> str | None:
 		"""Get the ID of a Slack channel by its name.
@@ -40,10 +43,15 @@ class SlackService:
 				if channel["name"] == channel_name:
 					return channel["id"]
 
-		except Exception as e:
-			self.logger.error(f"Exception occurred while fetching channels: {e}")
-			raise
-		return None
+			return None
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching channels",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 	def _get_messages(
 		self,
@@ -84,10 +92,15 @@ class SlackService:
 					self.logger.error(f"Error fetching messages: {response['error']}")
 					break
 
-		except Exception as e:
-			self.logger.error(f"Exception occurred while fetching messages: {e}")
-			raise
-		return messages
+			return messages
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching messages",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 	def _filter_messages_by_workflow(
 		self,
@@ -95,6 +108,9 @@ class SlackService:
 		workflow_name: str,
 	) -> list[dict]:
 		"""Filter messages that are part of a specific workflow.
+
+		Supports both old format ("AI Internal - Daily Tasks Tracker") and
+		new format ("Daily Standup Tracker") workflows.
 
 		Args:
 			messages (list[dict]): The list of messages to filter.
@@ -105,11 +121,18 @@ class SlackService:
 
 		"""
 		filtered_messages = []
+		# New format uses "Daily Standup Tracker", old format uses workflow_name
+		# Accept both to support migration period
+		accepted_usernames = [
+			workflow_name,  # Old format: "AI Internal - Daily Tasks Tracker"
+			"Daily Standup Tracker",  # New format
+		]
+
 		for message in messages:
 			if (
 				"bot_id" in message
 				and "username" in message
-				and message["username"] == workflow_name
+				and message["username"] in accepted_usernames
 			):
 				filtered_messages.append(message)
 
@@ -149,10 +172,15 @@ class SlackService:
 					)
 					break
 
-		except Exception as e:
-			self.logger.error(f"Exception occurred while fetching thread messages: {e}")
-			raise
-		return messages
+			return messages
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching thread messages",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 	def get_standups(
 		self,
@@ -171,11 +199,11 @@ class SlackService:
 			str: Formatted text with standup messages grouped by date.
 
 		"""
-		standup_parts = []
 		channel_id = self._get_channel_id(channel_name)
 
 		if not channel_id:
-			self.logger.warning(f"Channel not found: {channel_name}")
+			error_msg = f"Channel not found: {channel_name}"
+			self.logger.warning(error_msg)
 			return ""
 
 		# Fetch messages from the channel
@@ -187,19 +215,30 @@ class SlackService:
 			STANDUP_WORKFLOW_NAME,
 		)
 
+		all_standup_entries = []
+
 		for message in messages:
 			replies = self._get_thread_messages(channel_id, message["ts"])
-			standup_date = datetime.fromtimestamp(
-				float(message["ts"]),
-				tz=UTC,
-			).strftime("%B %d, %Y at %I:%M %p UTC")
+			thread_timestamp = float(message["ts"])
 
-			# Add timestamp header
-			standup_parts.append(f"## {standup_date}\n\n")
+			try:
+				standup_entries = self.parser.parse_thread(replies, thread_timestamp)
+				if standup_entries:
+					all_standup_entries.extend(standup_entries)
+				else:
+					error_msg = (
+						f"No structured questions found in thread {message['ts']}. "
+						"Skipping."
+					)
+					self.logger.warning(error_msg)
+			except Exception as e:
+				error_msg = (
+					f"Failed to parse standup thread {message['ts']}. "
+					"Skipping thread; no raw fallback is implemented."
+				)
+				self.logger.warning("%s: %s", error_msg, e)
 
-			# Add each reply's text (skip first message - workflow trigger)
-			for reply in replies[1:]:
-				if "text" in reply and reply["text"].strip():
-					standup_parts.append(f"{reply['text'].strip()}\n\n")
+		if all_standup_entries:
+			return self.parser.format_entries_as_toon(all_standup_entries)
 
-		return "".join(standup_parts)
+		return process_json_to_toon([])
