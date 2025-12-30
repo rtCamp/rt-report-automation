@@ -12,6 +12,15 @@ from app.llm import llm_router
 def register_routes(app: FastAPI):
 	"""Register API routes with the FastAPI application.
 
+	Routes are registered with the following authentication scheme:
+	- Health check routes: Public (no authentication required)
+	- LLM routes: Protected with API key authentication
+	- Google Docs routes: Protected with API key authentication
+
+	Authentication is enforced via the validate_api_key dependency which
+	requires the X-API-KEY header to be present and valid in all requests
+	to protected endpoints.
+
 	Args:
 		app (FastAPI): The FastAPI application instance.
 
