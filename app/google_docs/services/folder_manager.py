@@ -1,0 +1,178 @@
+"""Folder management service for Google Drive."""
+
+import logging
+from typing import Any
+
+from app.core.utils import log_and_raise
+from app.google_docs.services.google_auth import GoogleAuthService
+from app.google_docs.utils.constants import AUTOMATED_DOCS_FOLDER_NAME
+
+logger = logging.getLogger(__name__)
+
+
+class FolderManagerService:
+	"""Service for managing folders in Google Drive."""
+
+	def __init__(self):
+		"""Initialize the FolderManagerService."""
+		self.auth_service = GoogleAuthService()
+
+	def _search_folder_recursive(
+		self,
+		drive_service: Any,
+		parent_folder_id: str,
+		target_folder_name: str,
+		visited_folders: set[str] | None = None,
+	) -> str | None:
+		"""Recursively search for a folder by name in a folder tree.
+
+		Args:
+			drive_service: Google Drive API service instance.
+			parent_folder_id: ID of the folder to start searching from.
+			target_folder_name: Name of the folder to find.
+			visited_folders: Set of already visited folder IDs to prevent cycles.
+
+		Returns:
+			str | None: Folder ID if found, None otherwise.
+
+		"""
+		if visited_folders is None:
+			visited_folders = set()
+
+		# Prevent infinite loops from circular references
+		if parent_folder_id in visited_folders:
+			return None
+
+		visited_folders.add(parent_folder_id)
+
+		try:
+			# Query for folders within the parent folder
+			query = (
+				f"'{parent_folder_id}' in parents "
+				f"and mimeType = 'application/vnd.google-apps.folder' "
+				f"and trashed = false"
+			)
+
+			results = (
+				drive_service.files()
+				.list(
+					q=query,
+					fields="files(id, name)",
+					supportsAllDrives=True,
+					includeItemsFromAllDrives=True,
+				)
+				.execute()
+			)
+
+			files = results.get("files", [])
+
+			# Check if any child folder matches the target name
+			for file in files:
+				if file.get("name") == target_folder_name:
+					return file.get("id")
+
+			# Recursively search in child folders
+			for file in files:
+				folder_id = self._search_folder_recursive(
+					drive_service=drive_service,
+					parent_folder_id=file.get("id"),
+					target_folder_name=target_folder_name,
+					visited_folders=visited_folders,
+				)
+				if folder_id:
+					return folder_id
+
+		except Exception as e:
+			# Log warning but continue searching other folders
+			logger.warning(
+				f"Error searching in folder {parent_folder_id}: {e}",
+			)
+
+		return None
+
+	def _create_folder(
+		self,
+		drive_service: Any,
+		folder_name: str,
+		parent_folder_id: str,
+	) -> str:
+		"""Create a new folder in Google Drive.
+
+		Args:
+			drive_service: Google Drive API service instance.
+			folder_name: Name of the folder to create.
+			parent_folder_id: ID of the parent folder.
+
+		Returns:
+			str: ID of the created folder.
+
+		Raises:
+			Exception: If folder creation fails.
+
+		"""
+		try:
+			file_metadata = {
+				"name": folder_name,
+				"mimeType": "application/vnd.google-apps.folder",
+				"parents": [parent_folder_id],
+			}
+
+			folder = (
+				drive_service.files()
+				.create(
+					body=file_metadata,
+					fields="id",
+					supportsAllDrives=True,
+				)
+				.execute()
+			)
+
+			return folder.get("id")
+
+		except Exception as e:
+			log_and_raise(
+				logger,
+				f"Failed to create folder '{folder_name}'",
+				Exception,
+				e,
+			)
+
+	async def get_or_create_automated_docs_folder(
+		self,
+		parent_folder_id: str,
+	) -> str:
+		"""Get or create the automated docs folder.
+
+		This method implements Recursive child discovery:
+		- Recursively searches for a folder with the predefined name
+		- Returns the folder ID if found
+		- Creates the folder in the parent directory if not found
+
+		Args:
+			parent_folder_id: ID of the parent folder to search from.
+
+		Returns:
+			str: ID of the found or created automated docs folder.
+
+		Raises:
+			Exception: If folder creation fails or API call errors occur.
+
+		"""
+		drive_service = self.auth_service.get_drive_service()
+
+		# Step 1: Try to find the folder recursively
+		folder_id = self._search_folder_recursive(
+			drive_service=drive_service,
+			parent_folder_id=parent_folder_id,
+			target_folder_name=AUTOMATED_DOCS_FOLDER_NAME,
+		)
+
+		# Step 2: If not found, create it as a direct child of parent folder
+		if not folder_id:
+			folder_id = self._create_folder(
+				drive_service=drive_service,
+				folder_name=AUTOMATED_DOCS_FOLDER_NAME,
+				parent_folder_id=parent_folder_id,
+			)
+
+		return folder_id
