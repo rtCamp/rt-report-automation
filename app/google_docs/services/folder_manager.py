@@ -167,42 +167,43 @@ class FolderManagerService:
 				e,
 			)
 
-	async def get_or_create_automated_docs_folder(
+	async def get_automated_docs_folder(
 		self,
 		parent_folder_id: str,
 	) -> str:
-		"""Get or create the automated docs folder.
+		"""Get the automated docs folder.
 
 		This method implements Recursive child discovery:
 		- Recursively searches for a folder with the predefined name
 		- Returns the folder ID if found
-		- Creates the folder in the parent directory if not found
+		- Raises an error if not found
 
 		Args:
 			parent_folder_id: ID of the parent folder to search from.
 
 		Returns:
-			str: ID of the found or created automated docs folder.
+			str: ID of the found automated docs folder.
 
 		Raises:
-			Exception: If folder creation fails or API call errors occur.
+			Exception: If folder is not found or API call errors occur.
 
 		"""
 		drive_service = self.auth_service.get_drive_service()
 
-		# Step 1: Try to find the folder recursively
+		# Try to find the folder recursively
 		folder_id = self._search_folder_recursive(
 			drive_service=drive_service,
 			parent_folder_id=parent_folder_id,
 			target_folder_name=AUTOMATED_DOCS_FOLDER_NAME,
 		)
 
-		# Step 2: If not found, create it as a direct child of parent folder
+		# If not found, raise an error
 		if not folder_id:
-			folder_id = self._create_folder(
-				drive_service=drive_service,
-				folder_name=AUTOMATED_DOCS_FOLDER_NAME,
-				parent_folder_id=parent_folder_id,
+			log_and_raise(
+				logger,
+				f"Folder '{AUTOMATED_DOCS_FOLDER_NAME}' not found in parent "
+				f"folder {parent_folder_id} or its children. "
+				f"Please create the folder manually.",
 			)
 
 		return folder_id

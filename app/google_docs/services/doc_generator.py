@@ -66,16 +66,14 @@ class DocGeneratorService:
 		if output_folder_id:
 			# Get or create the folder to store automated docs
 			try:
-				output_folder_id = (
-					await self.folder_manager.get_or_create_automated_docs_folder(
-						parent_folder_id=output_folder_id,
-					)
+				output_folder_id = await self.folder_manager.get_automated_docs_folder(
+					parent_folder_id=output_folder_id,
 				)
 			except Exception as e:
 				log_and_raise(
 					logger,
-					"Failed to get/create automated docs folder. "
-					"Check folder permissions.",
+					"Failed to get automated docs folder. "
+					"Check folder permissions or create the folder manually.",
 					Exception,
 					e,
 				)
