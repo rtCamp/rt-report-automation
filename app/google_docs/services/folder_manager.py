@@ -106,67 +106,6 @@ class FolderManagerService:
 
 		return None
 
-	def _create_folder(
-		self,
-		drive_service: Any,
-		folder_name: str,
-		parent_folder_id: str,
-	) -> str:
-		"""Create a new folder in Google Drive.
-
-		Args:
-			drive_service: Google Drive API service instance.
-			folder_name: Name of the folder to create.
-			parent_folder_id: ID of the parent folder.
-
-		Returns:
-			str: ID of the created folder.
-
-		Raises:
-			Exception: If folder creation fails.
-
-		"""
-		try:
-			file_metadata = {
-				"name": folder_name,
-				"mimeType": "application/vnd.google-apps.folder",
-				"parents": [parent_folder_id],
-			}
-
-			folder = (
-				drive_service.files()
-				.create(
-					body=file_metadata,
-					fields="id",
-					supportsAllDrives=True,
-				)
-				.execute()
-			)
-
-			folder_id = folder.get("id")
-			if not folder_id:
-				log_and_raise(
-					logger,
-					f"Failed to create folder '{folder_name}' - no folder ID returned",
-				)
-
-			return folder_id
-
-		except HttpError as e:
-			log_and_raise(
-				logger,
-				f"Failed to create folder '{folder_name}'. Check folder permissions",
-				Exception,
-				e,
-			)
-		except Exception as e:
-			log_and_raise(
-				logger,
-				f"Failed to create folder '{folder_name}'",
-				Exception,
-				e,
-			)
-
 	async def get_automated_docs_folder(
 		self,
 		parent_folder_id: str,
