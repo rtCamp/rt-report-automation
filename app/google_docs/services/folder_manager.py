@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from googleapiclient.errors import HttpError
+
 from app.core.utils import log_and_raise
 from app.google_docs.services.google_auth import GoogleAuthService
 from app.google_docs.utils.constants import AUTOMATED_DOCS_FOLDER_NAME
@@ -73,19 +75,33 @@ class FolderManagerService:
 
 			# Recursively search in child folders
 			for file in files:
+				file_id = file.get("id")
+				if not file_id:
+					continue
+
 				folder_id = self._search_folder_recursive(
 					drive_service=drive_service,
-					parent_folder_id=file.get("id"),
+					parent_folder_id=file_id,
 					target_folder_name=target_folder_name,
 					visited_folders=visited_folders,
 				)
 				if folder_id:
 					return folder_id
 
+		except HttpError as e:
+			# Log warning for permission/access issues but continue searching
+			if e.resp.status in [403, 404]:
+				logger.warning(
+					f"Access denied or folder not found {parent_folder_id}: {e}",
+				)
+			else:
+				logger.warning(
+					f"Error searching in folder {parent_folder_id}: {e}",
+				)
 		except Exception as e:
-			# Log warning but continue searching other folders
+			# Log unexpected errors but continue searching
 			logger.warning(
-				f"Error searching in folder {parent_folder_id}: {e}",
+				f"Unexpected error searching in folder {parent_folder_id}: {e}",
 			)
 
 		return None
@@ -127,8 +143,22 @@ class FolderManagerService:
 				.execute()
 			)
 
-			return folder.get("id")
+			folder_id = folder.get("id")
+			if not folder_id:
+				log_and_raise(
+					logger,
+					f"Failed to create folder '{folder_name}' - no folder ID returned",
+				)
 
+			return folder_id
+
+		except HttpError as e:
+			log_and_raise(
+				logger,
+				f"Failed to create folder '{folder_name}'. Check folder permissions",
+				Exception,
+				e,
+			)
 		except Exception as e:
 			log_and_raise(
 				logger,
