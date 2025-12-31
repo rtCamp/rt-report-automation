@@ -7,7 +7,10 @@ from googleapiclient.errors import HttpError
 
 from app.core.utils import log_and_raise
 from app.google_docs.services.google_auth import GoogleAuthService
-from app.google_docs.utils.constants import AUTOMATED_DOCS_FOLDER_NAME
+from app.google_docs.utils.constants import (
+	AUTOMATED_DOCS_FOLDER_NAME,
+	DEFAULT_MAX_RECURSION_DEPTH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ class FolderManagerService:
 		parent_folder_id: str,
 		target_folder_name: str,
 		visited_folders: set[str] | None = None,
-		max_depth: int = 10,
+		max_depth: int = DEFAULT_MAX_RECURSION_DEPTH,
 		current_depth: int = 0,
 	) -> str | None:
 		"""Recursively search for a folder by name in a folder tree.
@@ -132,7 +135,7 @@ class FolderManagerService:
 	async def get_automated_docs_folder(
 		self,
 		parent_folder_id: str,
-		max_depth: int = 10,
+		max_depth: int = DEFAULT_MAX_RECURSION_DEPTH,
 	) -> str:
 		"""Get the automated docs folder.
 
