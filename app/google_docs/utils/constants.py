@@ -7,6 +7,10 @@ TAG_SUFFIX = "-rtai"
 # Validation limits
 MAX_REPLACEMENT_ENTRIES = 100  # Maximum number of replacement key-value pairs
 
+# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/67
+# Change the folder constant based on what's decided later
+AUTOMATED_DOCS_FOLDER_NAME = "Automated Doc"
+
 
 def get_template_tag(key: str) -> str:
 	"""Generate a template tag for replacements.
