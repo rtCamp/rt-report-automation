@@ -5,6 +5,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.utils import log_and_raise
+from app.google_docs.services.folder_manager import FolderManagerService
 from app.google_docs.services.google_auth import GoogleAuthService
 from app.google_docs.utils.constants import get_template_tag
 
@@ -17,6 +18,7 @@ class DocGeneratorService:
 	def __init__(self):
 		"""Initialize the DocGeneratorService."""
 		self.auth_service = GoogleAuthService()
+		self.folder_manager = FolderManagerService()
 
 	async def create_doc_from_template(
 		self,
@@ -57,10 +59,28 @@ class DocGeneratorService:
 			"name": output_name.strip(),
 		}
 
-		# Add output folder if configured
-		# If not set, document will be copied to the template's parent folder
-		if settings.GOOGLE_OUTPUT_FOLDER_ID:
-			copy_request_body["parents"] = [settings.GOOGLE_OUTPUT_FOLDER_ID]
+		# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/67
+		# Instead of a single static output folder, we will get the parent
+		# folder dynamically per request
+		output_folder_id = settings.GOOGLE_OUTPUT_FOLDER_ID
+		if output_folder_id:
+			# Get or create the folder to store automated docs
+			try:
+				output_folder_id = (
+					await self.folder_manager.get_or_create_automated_docs_folder(
+						parent_folder_id=output_folder_id,
+					)
+				)
+			except Exception as e:
+				log_and_raise(
+					logger,
+					"Failed to get/create automated docs folder. "
+					"Check folder permissions.",
+					Exception,
+					e,
+				)
+
+			copy_request_body["parents"] = [output_folder_id]
 
 		try:
 			copied_file = (

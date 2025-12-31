@@ -8,7 +8,8 @@ TAG_SUFFIX = "-rtai"
 MAX_REPLACEMENT_ENTRIES = 100  # Maximum number of replacement key-value pairs
 
 # TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/67
-# Change the folder constant based on what's decided later
+# The folder name is subject to change and will be updated once the final
+# naming decision is made.
 AUTOMATED_DOCS_FOLDER_NAME = "Automated Doc"
 
 
