@@ -63,12 +63,18 @@ class DocGeneratorService:
 		# Instead of a single static output folder, we will get the parent
 		# folder dynamically per request
 		output_folder_id = settings.GOOGLE_OUTPUT_FOLDER_ID
-		if output_folder_id:
-			# Get the automated docs folder
-			output_folder_id = await self.folder_manager.get_automated_docs_folder(
-				parent_folder_id=output_folder_id,
+		if not output_folder_id:
+			log_and_raise(
+				logger,
+				"GOOGLE_OUTPUT_FOLDER_ID is not configured. "
+				"Please set the output folder ID in settings.",
 			)
-			copy_request_body["parents"] = [output_folder_id]
+
+		# Get the automated docs folder
+		output_folder_id = await self.folder_manager.get_automated_docs_folder(
+			parent_folder_id=output_folder_id,
+		)
+		copy_request_body["parents"] = [output_folder_id]
 
 		try:
 			copied_file = (

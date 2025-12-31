@@ -25,6 +25,8 @@ class FolderManagerService:
 		parent_folder_id: str,
 		target_folder_name: str,
 		visited_folders: set[str] | None = None,
+		max_depth: int = 10,
+		current_depth: int = 0,
 	) -> str | None:
 		"""Recursively search for a folder by name in a folder tree.
 
@@ -33,6 +35,8 @@ class FolderManagerService:
 			parent_folder_id: ID of the folder to start searching from.
 			target_folder_name: Name of the folder to find.
 			visited_folders: Set of already visited folder IDs to prevent cycles.
+			max_depth: Maximum recursion depth to prevent excessive API calls.
+			current_depth: Current depth in the recursion tree.
 
 		Returns:
 			str | None: Folder ID if found, None otherwise.
@@ -45,6 +49,14 @@ class FolderManagerService:
 		if parent_folder_id in visited_folders:
 			return None
 
+		# Prevent excessive recursion depth
+		if current_depth >= max_depth:
+			logger.warning(
+				f"Max recursion depth ({max_depth}) reached at folder "
+				f"{parent_folder_id}",
+			)
+			return None
+
 		visited_folders.add(parent_folder_id)
 
 		try:
@@ -55,38 +67,49 @@ class FolderManagerService:
 				f"and trashed = false"
 			)
 
-			results = (
-				drive_service.files()
-				.list(
-					q=query,
-					fields="files(id, name)",
-					supportsAllDrives=True,
-					includeItemsFromAllDrives=True,
+			# Handle pagination to ensure all folders are searched
+			page_token: str | None = None
+			while True:
+				results = (
+					drive_service.files()
+					.list(
+						q=query,
+						fields="nextPageToken, files(id, name)",
+						supportsAllDrives=True,
+						includeItemsFromAllDrives=True,
+						pageToken=page_token,
+					)
+					.execute()
 				)
-				.execute()
-			)
 
-			files = results.get("files", [])
+				files = results.get("files", [])
 
-			# Check if any child folder matches the target name
-			for file in files:
-				if file.get("name") == target_folder_name:
-					return file.get("id")
+				# Check if any child folder matches the target name
+				for file in files:
+					if file.get("name") == target_folder_name:
+						return file.get("id")
 
-			# Recursively search in child folders
-			for file in files:
-				file_id = file.get("id")
-				if not file_id:
-					continue
+				# Recursively search in child folders
+				for file in files:
+					file_id = file.get("id")
+					if not file_id:
+						continue
 
-				folder_id = self._search_folder_recursive(
-					drive_service=drive_service,
-					parent_folder_id=file_id,
-					target_folder_name=target_folder_name,
-					visited_folders=visited_folders,
-				)
-				if folder_id:
-					return folder_id
+					folder_id = self._search_folder_recursive(
+						drive_service=drive_service,
+						parent_folder_id=file_id,
+						target_folder_name=target_folder_name,
+						visited_folders=visited_folders,
+						max_depth=max_depth,
+						current_depth=current_depth + 1,
+					)
+					if folder_id:
+						return folder_id
+
+				# Check for next page
+				page_token = results.get("nextPageToken")
+				if not page_token:
+					break
 
 		except HttpError as e:
 			# Log warning for permission/access issues but continue searching
@@ -109,6 +132,7 @@ class FolderManagerService:
 	async def get_automated_docs_folder(
 		self,
 		parent_folder_id: str,
+		max_depth: int = 10,
 	) -> str:
 		"""Get the automated docs folder.
 
@@ -119,6 +143,8 @@ class FolderManagerService:
 
 		Args:
 			parent_folder_id: ID of the parent folder to search from.
+			max_depth: Maximum recursion depth to prevent excessive API calls.
+				Default is 10 levels deep.
 
 		Returns:
 			str: ID of the found automated docs folder.
@@ -134,6 +160,7 @@ class FolderManagerService:
 			drive_service=drive_service,
 			parent_folder_id=parent_folder_id,
 			target_folder_name=AUTOMATED_DOCS_FOLDER_NAME,
+			max_depth=max_depth,
 		)
 
 		# If not found, raise an error
