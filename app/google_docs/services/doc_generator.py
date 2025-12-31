@@ -64,20 +64,10 @@ class DocGeneratorService:
 		# folder dynamically per request
 		output_folder_id = settings.GOOGLE_OUTPUT_FOLDER_ID
 		if output_folder_id:
-			# Get or create the folder to store automated docs
-			try:
-				output_folder_id = await self.folder_manager.get_automated_docs_folder(
-					parent_folder_id=output_folder_id,
-				)
-			except Exception as e:
-				log_and_raise(
-					logger,
-					"Failed to get automated docs folder. "
-					"Check folder permissions or create the folder manually.",
-					Exception,
-					e,
-				)
-
+			# Get the automated docs folder
+			output_folder_id = await self.folder_manager.get_automated_docs_folder(
+				parent_folder_id=output_folder_id,
+			)
 			copy_request_body["parents"] = [output_folder_id]
 
 		try:
