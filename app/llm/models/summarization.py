@@ -41,6 +41,12 @@ class ProjectMetadata(BaseModel):
 		max_length=128,
 	)
 
+	drive_link: str = Field(
+		description="Google Drive folder link where reports should be generated",
+		examples=["https://drive.google.com/drive/folders/1a2b3c4d5e6f7g8h9i0j"],
+		min_length=10,
+	)
+
 
 class UserMetadata(BaseModel):
 	"""User metadata schema."""
