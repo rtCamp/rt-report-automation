@@ -47,7 +47,7 @@ class GoogleDocsService:
 				"Missing or invalid replacements object",
 			)
 
-		if not parent_folder_id or not parent_folder_id.strip():
+		if not parent_folder_id:
 			log_and_raise(
 				logger,
 				"parent_folder_id is required and cannot be empty",

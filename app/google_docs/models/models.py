@@ -55,7 +55,7 @@ class GenerateDocRequest(BaseModel):
 			"The 'Automated Docs' folder must exist within this parent."
 		),
 		min_length=MIN_FOLDER_ID_LENGTH,
-		examples=["1a2b3c4d5e6f7g8h9i0j"],
+		examples=["1iwxHw-G4am1lliSoftEZjzmIxV38P__4"],
 	)
 
 	@field_validator("replacements")
