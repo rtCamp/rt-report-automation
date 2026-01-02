@@ -80,6 +80,7 @@ async def generate_document(
 		result = await service.generate_document(
 			replacements=request.replacements,
 			doc_name=request.doc_name,
+			parent_folder_id=request.parent_folder_id,
 		)
 
 		return GenerateDocResponse(**result)

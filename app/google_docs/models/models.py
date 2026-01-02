@@ -13,6 +13,8 @@ class GenerateDocRequest(BaseModel):
 			Keys should match the tags in your template (without delimiters).
 			Values can be strings or lists of strings.
 		doc_name: Name for the generated document.
+		parent_folder_id: Google Drive parent folder ID. The 'Automated Docs'
+			folder must already exist within this parent.
 
 	"""
 
@@ -41,6 +43,16 @@ class GenerateDocRequest(BaseModel):
 		min_length=1,
 		max_length=200,
 		examples=["RT Report Automation - 1st Dec 2025 - 24th Dec 2025"],
+	)
+
+	parent_folder_id: str = Field(
+		...,
+		description=(
+			"Google Drive parent folder ID (extracted from drive_link). "
+			"The 'Automated Docs' folder must exist within this parent."
+		),
+		min_length=10,
+		examples=["1a2b3c4d5e6f7g8h9i0j"],
 	)
 
 	@field_validator("replacements")
