@@ -84,17 +84,9 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		)
 
 		# Extract folder ID from drive_link
-		try:
-			folder_id = extract_folder_id_from_drive_link(
-				project_metadata.drive_link,
-			)
-		except ValueError as e:
-			log_and_raise(
-				logger,
-				f"Invalid drive_link in project_metadata: {e}",
-				ValueError,
-				cause=e,
-			)
+		folder_id = extract_folder_id_from_drive_link(
+			project_metadata.drive_link,
+		)
 
 		# Get Google Docs service
 		google_docs_service = get_google_docs_service()
