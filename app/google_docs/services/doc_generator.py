@@ -24,22 +24,33 @@ class DocGeneratorService:
 		self,
 		replacements: dict[str, str | list[str]],
 		output_name: str,
+		parent_folder_id: str,
 	) -> str:
 		"""Create a Google Doc from a template with replacements.
 
 		Args:
 			replacements: Dictionary of key-value pairs for template replacements.
 			output_name: Name for the generated document.
+			parent_folder_id: Google Drive parent folder ID. The 'Automated Docs'
+				folder must already exist within this parent.
 
 		Returns:
 			str: URL of the created document.
 
 		Raises:
-			ValueError: If output_name is empty, replacement keys are empty,
-				or template tag keys contain invalid characters.
+			ValueError: If output_name is empty, parent_folder_id is empty,
+				replacement keys are empty, or template tag keys contain
+				invalid characters.
 			Exception: If document creation or update fails.
 
 		"""
+		# Validate inputs
+		if not parent_folder_id or not parent_folder_id.strip():
+			log_and_raise(
+				logger,
+				"parent_folder_id is required and cannot be empty",
+			)
+
 		# Validate replacement keys
 		for key in replacements:
 			if not key or not key.strip():
@@ -59,22 +70,11 @@ class DocGeneratorService:
 			"name": output_name.strip(),
 		}
 
-		# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/67
-		# Instead of a single static output folder, we will get the parent
-		# folder dynamically per request
-		output_folder_id = settings.GOOGLE_OUTPUT_FOLDER_ID
-		if not output_folder_id:
-			log_and_raise(
-				logger,
-				"GOOGLE_OUTPUT_FOLDER_ID is not configured. "
-				"Please set the output folder ID in settings.",
-			)
-
-		# Get the automated docs folder
-		output_folder_id = await self.folder_manager.get_automated_docs_folder(
-			parent_folder_id=output_folder_id,
+		# Find the automated docs folder within the provided parent folder
+		automated_folder_id = await self.folder_manager.get_automated_docs_folder(
+			parent_folder_id=parent_folder_id.strip(),
 		)
-		copy_request_body["parents"] = [output_folder_id]
+		copy_request_body["parents"] = [automated_folder_id]
 
 		try:
 			copied_file = (
