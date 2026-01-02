@@ -2,7 +2,10 @@
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.google_docs.utils.constants import MAX_REPLACEMENT_ENTRIES
+from app.google_docs.utils.constants import (
+	MAX_REPLACEMENT_ENTRIES,
+	MIN_FOLDER_ID_LENGTH,
+)
 
 
 class GenerateDocRequest(BaseModel):
@@ -51,7 +54,7 @@ class GenerateDocRequest(BaseModel):
 			"Google Drive parent folder ID (extracted from drive_link). "
 			"The 'Automated Docs' folder must exist within this parent."
 		),
-		min_length=10,
+		min_length=MIN_FOLDER_ID_LENGTH,
 		examples=["1a2b3c4d5e6f7g8h9i0j"],
 	)
 
