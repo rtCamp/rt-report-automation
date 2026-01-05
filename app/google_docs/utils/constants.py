@@ -7,6 +7,14 @@ TAG_SUFFIX = "-rtai"
 # Validation limits
 MAX_REPLACEMENT_ENTRIES = 100  # Maximum number of replacement key-value pairs
 
+# Folder management
+DEFAULT_MAX_RECURSION_DEPTH = 10  # Maximum depth for recursive folder search
+
+# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/67
+# The folder name is subject to change and will be updated once the final
+# naming decision is made.
+AUTOMATED_DOCS_FOLDER_NAME = "Automated Docs"
+
 
 def get_template_tag(key: str) -> str:
 	"""Generate a template tag for replacements.
