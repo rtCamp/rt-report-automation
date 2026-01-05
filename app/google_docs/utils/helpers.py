@@ -12,9 +12,24 @@ from app.google_docs.utils.constants import (
 logger = logging.getLogger(__name__)
 
 # Regex patterns for Google Drive folder ID extraction
+# Matches: /folders/{folder_id} in URLs (captures folder ID)
+# Example: "https://drive.google.com/drive/folders/abc123_xyz-456"
+# -> captures "abc123_xyz-456"
+# Pattern: /folders/([a-zA-Z0-9_-]{8,255})
+#   - [a-zA-Z0-9_-] = alphanumeric characters, underscores, and hyphens
+#   - {8,255} = length must be between MIN and MAX (bounded for security)
+#   - () = capture group to extract the folder ID
 FOLDER_URL_PATTERN = re.compile(
 	rf"/folders/([a-zA-Z0-9_-]{{{MIN_FOLDER_ID_LENGTH},{MAX_FOLDER_ID_LENGTH}}})",
 )
+
+# Matches: Direct folder ID string (alphanumeric with - and _)
+# Example: "abc123_xyz-456" -> matches entire string if valid
+# Pattern: ^[a-zA-Z0-9_-]{8,255}$
+#   - ^ = start of string
+#   - [a-zA-Z0-9_-] = alphanumeric characters, underscores, and hyphens
+#   - {8,255} = length must be between MIN and MAX (bounded for security)
+#   - $ = end of string (ensures entire string matches, not just part)
 DIRECT_FOLDER_ID_PATTERN = re.compile(
 	rf"^[a-zA-Z0-9_-]{{{MIN_FOLDER_ID_LENGTH},{MAX_FOLDER_ID_LENGTH}}}$",
 )

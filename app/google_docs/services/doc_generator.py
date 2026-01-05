@@ -72,7 +72,7 @@ class DocGeneratorService:
 
 		# Find the automated docs folder within the provided parent folder
 		automated_folder_id = await self.folder_manager.get_automated_docs_folder(
-			parent_folder_id=parent_folder_id,
+			parent_folder_id,
 		)
 		copy_request_body["parents"] = [automated_folder_id]
 
