@@ -56,7 +56,6 @@ class Settings(BaseSettings):
 	# Google Workspace Configuration
 	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr
 	GOOGLE_TEMPLATE_DOC_ID: str
-	GOOGLE_OUTPUT_FOLDER_ID: str
 	GOOGLE_SCOPES: str = Field(
 		default="https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents",
 		description="Comma-separated list of Google API scopes",
@@ -101,13 +100,6 @@ class Settings(BaseSettings):
 		if not self.GOOGLE_TEMPLATE_DOC_ID.strip():
 			raise ValueError(
 				"GOOGLE_TEMPLATE_DOC_ID must be set and cannot be empty",
-			)
-
-		# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/27
-		# will be dynamically created per project rather than a single static value
-		if not self.GOOGLE_OUTPUT_FOLDER_ID.strip():
-			raise ValueError(
-				"GOOGLE_OUTPUT_FOLDER_ID must be set and cannot be empty",
 			)
 
 		# Validate GOOGLE_SCOPES at initialization

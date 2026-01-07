@@ -19,6 +19,7 @@ class GoogleDocsService:
 		self,
 		replacements: dict[str, str | list[str]] | None,
 		doc_name: str,
+		parent_folder_id: str,
 	) -> dict[str, str]:
 		"""Generate a Google Doc from template with replacements.
 
@@ -27,13 +28,16 @@ class GoogleDocsService:
 				Keys should match template tags (without delimiters).
 				Values can be strings or lists of strings.
 			doc_name: Name for the generated document.
+			parent_folder_id: Google Drive parent folder ID. The 'Automated Docs'
+				folder must already exist within this parent.
 
 		Returns:
 			dict: Dictionary containing the document URL.
 				Example: {"document_url": "https://docs.google.com/document/d/..."}
 
 		Raises:
-			ValueError: If replacements is missing or invalid.
+			ValueError: If replacements is missing or invalid,
+				or parent_folder_id is empty.
 			Exception: If document generation fails.
 
 		"""
@@ -43,9 +47,16 @@ class GoogleDocsService:
 				"Missing or invalid replacements object",
 			)
 
+		if not parent_folder_id:
+			log_and_raise(
+				logger,
+				"parent_folder_id is required and cannot be empty",
+			)
+
 		document_url = await self.doc_generator.create_doc_from_template(
 			replacements=replacements,
 			output_name=doc_name,
+			parent_folder_id=parent_folder_id,
 		)
 
 		return {"document_url": document_url}

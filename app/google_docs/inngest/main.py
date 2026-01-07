@@ -13,6 +13,7 @@ from app.google_docs.inngest.utils import (
 	build_replacements_dict,
 	generate_doc_name,
 )
+from app.google_docs.utils.helpers import extract_folder_id_from_drive_link
 from app.llm.models.summarization import (
 	ProjectMetadata,
 	ProjectSummarySchema,
@@ -82,6 +83,11 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 			end_date=project_metadata.end_date,
 		)
 
+		# Extract folder ID from drive_link
+		folder_id = extract_folder_id_from_drive_link(
+			project_metadata.drive_link,
+		)
+
 		# Get Google Docs service
 		google_docs_service = get_google_docs_service()
 
@@ -89,6 +95,7 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 		return await google_docs_service.generate_document(
 			replacements=replacements,
 			doc_name=doc_name,
+			parent_folder_id=folder_id,
 		)
 
 	except ValidationError as e:

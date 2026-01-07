@@ -3,8 +3,9 @@
 import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.google_docs.utils.helpers import extract_folder_id_from_drive_link
 from app.llm.models import LLMProvider, SupportedModels
 
 
@@ -40,6 +41,33 @@ class ProjectMetadata(BaseModel):
 		min_length=3,
 		max_length=128,
 	)
+
+	drive_link: str = Field(
+		description="Google Drive folder link where reports should be generated",
+		examples=[
+			"https://drive.google.com/drive/folders/1iwxHw-G4am1lliSoftEZjzmIxV38P__4"
+		],
+		min_length=8,
+	)
+
+	@field_validator("drive_link")
+	@classmethod
+	def validate_drive_link(cls, v: str) -> str:
+		"""Validate Google Drive link format.
+
+		Args:
+			v: The drive link to validate.
+
+		Returns:
+			The validated drive link.
+
+		Raises:
+			ValueError: If the drive link format is invalid.
+
+		"""
+		# Validate format using extraction function
+		extract_folder_id_from_drive_link(v)
+		return v
 
 
 class UserMetadata(BaseModel):
