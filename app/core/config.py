@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 	LANGFUSE_HOST: HttpUrl = HttpUrl("https://cloud.langfuse.com")
 
 	# Inngest Configuration
-	INNGEST_BASE_URL: HttpUrl
+	# INNGEST_BASE_URL: HttpUrl
 	INNGEST_DEV: int
 	INNGEST_EVENT_KEY: SecretStr
 	INNGEST_SIGNING_KEY: SecretStr
