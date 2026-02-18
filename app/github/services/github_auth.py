@@ -47,10 +47,6 @@ class GitHubAuthService:
 				"iss": settings.GITHUB_CLIENT_ID.get_secret_value(),
 			}
 
-			print( 'JWT payload', payload )
-			print( 'Signing key length', self.signing_key )
-			print( 'GH PrivateKey', settings.GITHUB_APP_PRIVATE_KEY.get_secret_value() )
-
 			return jwt.encode(payload, self.signing_key, algorithm="RS256")
 
 		except Exception as error:
