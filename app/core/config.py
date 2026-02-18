@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 	LANGFUSE_HOST: HttpUrl = HttpUrl("https://cloud.langfuse.com")
 
 	# Inngest Configuration
-	# INNGEST_BASE_URL: HttpUrl
+	INNGEST_BASE_URL: HttpUrl
 	INNGEST_DEV: int
 	INNGEST_EVENT_KEY: SecretStr
 	INNGEST_SIGNING_KEY: SecretStr
@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 	# Google Workspace Configuration
 	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr
 	GOOGLE_TEMPLATE_DOC_ID: str
+	GOOGLE_OUTPUT_FOLDER_ID: str
 	GOOGLE_SCOPES: str = Field(
 		default="https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/documents",
 		description="Comma-separated list of Google API scopes",

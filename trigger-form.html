@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RT Report Automation — Trigger</title>
+  <style>
+    /* ── Reset & Base ───────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --clr-bg:        #0f1117;
+      --clr-surface:   #181b23;
+      --clr-card:      #1f2330;
+      --clr-border:    #2e3348;
+      --clr-border-focus: #6366f1;
+      --clr-primary:   #6366f1;
+      --clr-primary-hover: #818cf8;
+      --clr-text:      #e2e8f0;
+      --clr-text-dim:  #94a3b8;
+      --clr-text-label:#cbd5e1;
+      --clr-success:   #22c55e;
+      --clr-error:     #ef4444;
+      --clr-warning:   #f59e0b;
+      --clr-code-bg:   #131620;
+      --radius:        0.75rem;
+      --radius-sm:     0.5rem;
+      --shadow:        0 4px 24px rgba(0,0,0,.35);
+      --font:          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --transition:    0.2s ease;
+    }
+
+    html {
+      font-size: clamp(14px, 1vw + 10px, 17px);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--clr-bg);
+      color: var(--clr-text);
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .wrapper {
+      width: min(96%, 64rem);
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vw, 3.5rem) 0;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: clamp(2rem, 4vw, 3.5rem);
+    }
+
+    header h1 {
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--clr-primary), #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--clr-text-dim);
+      margin-top: 0.35rem;
+      font-size: 0.95rem;
+    }
+
+    /* ── Section Cards ──────────────────────────────────── */
+    .section {
+      background: var(--clr-card);
+      border: 1px solid var(--clr-border);
+      border-radius: var(--radius);
+      padding: clamp(1.25rem, 3vw, 2rem);
+      margin-bottom: clamp(1rem, 2vw, 1.5rem);
+      box-shadow: var(--shadow);
+      transition: border-color var(--transition);
+    }
+
+    .section:hover {
+      border-color: color-mix(in srgb, var(--clr-primary) 40%, transparent);
+    }
+
+    .section-title {
+      font-size: clamp(1rem, 1.6vw, 1.2rem);
+      font-weight: 600;
+      margin-bottom: clamp(0.75rem, 2vw, 1.25rem);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-title .icon {
+      width: 1.35em;
+      height: 1.35em;
+      flex-shrink: 0;
+    }
+
+    /* ── Grid ───────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+      gap: clamp(0.75rem, 2vw, 1.25rem);
+    }
+
+    .grid .full {
+      grid-column: 1 / -1;
+    }
+
+    /* ── Form Controls ──────────────────────────────────── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    label {
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--clr-text-label);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    input, select, textarea {
+      background: var(--clr-surface);
+      border: 1px solid var(--clr-border);
+      color: var(--clr-text);
+      border-radius: var(--radius-sm);
+      padding: 0.6rem 0.85rem;
+      font-size: 0.95rem;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      width: 100%;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--clr-text-dim);
+      opacity: 0.6;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--clr-border-focus);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.2);
+    }
+
+    select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11.5l-5-5h10l-5 5z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      padding-right: 2.2rem;
+    }
+
+    /* ── Toggle Switch ──────────────────────────────────── */
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.85rem 1.1rem;
+      background: rgba(245,158,11,.1);
+      border: 1px solid rgba(245,158,11,.3);
+      border-radius: var(--radius-sm);
+      margin-bottom: 1rem;
+    }
+
+    .toggle-label {
+      font-size: 0.85rem;
+      color: var(--clr-warning);
+      font-weight: 500;
+      flex: 1;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 3rem;
+      height: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--clr-surface);
+      border: 1px solid var(--clr-border);
+      transition: var(--transition);
+      border-radius: 999px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 1rem;
+      width: 1rem;
+      left: 0.15rem;
+      bottom: 0.15rem;
+      background: var(--clr-text-dim);
+      transition: var(--transition);
+      border-radius: 50%;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--clr-warning);
+      border-color: var(--clr-warning);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      background: #fff;
+      transform: translateX(1.5rem);
+    }
+
+    /* ── Buttons ────────────────────────────────────────── */
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: clamp(1rem, 2vw, 1.5rem);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      padding: 0.7rem 1.6rem;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: var(--font);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition), transform 0.1s ease, box-shadow var(--transition);
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: var(--clr-primary);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(99,102,241,.35);
+    }
+    .btn-primary:hover {
+      background: var(--clr-primary-hover);
+    }
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--clr-surface);
+      border: 1px solid var(--clr-border);
+      color: var(--clr-text);
+    }
+    .btn-secondary:hover {
+      border-color: var(--clr-text-dim);
+    }
+
+    /* ── Spinner ────────────────────────────────────────── */
+    .spinner {
+      width: 1.1em;
+      height: 1.1em;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: none;
+    }
+    .btn-primary.loading .spinner { display: inline-block; }
+    .btn-primary.loading .btn-label { opacity: 0.7; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── Status Banner ──────────────────────────────────── */
+    .status-banner {
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 500;
+      margin-top: 1rem;
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .status-banner.visible { display: flex; }
+
+    .status-banner.success {
+      background: rgba(34,197,94,.1);
+      border: 1px solid rgba(34,197,94,.3);
+      color: var(--clr-success);
+    }
+    .status-banner.error {
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.3);
+      color: var(--clr-error);
+    }
+
+    /* ── Response Panel ─────────────────────────────────── */
+    .response-panel {
+      margin-top: clamp(1rem, 2vw, 1.5rem);
+      display: none;
+    }
+    .response-panel.visible { display: block; }
+
+    .response-panel .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .response-panel .panel-title {
+      font-size: clamp(1rem, 1.6vw, 1.15rem);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .response-panel .badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .badge.ok    { background: rgba(34,197,94,.15); color: var(--clr-success); }
+    .badge.fail  { background: rgba(239,68,68,.15); color: var(--clr-error); }
+
+    .response-body {
+      background: var(--clr-code-bg);
+      border: 1px solid var(--clr-border);
+      border-radius: var(--radius-sm);
+      padding: clamp(0.75rem, 2vw, 1.25rem);
+      overflow-x: auto;
+      position: relative;
+    }
+
+    .response-body pre {
+      margin: 0;
+      font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 0.55rem;
+      right: 0.55rem;
+      background: var(--clr-surface);
+      border: 1px solid var(--clr-border);
+      color: var(--clr-text-dim);
+      border-radius: var(--radius-sm);
+      padding: 0.3rem 0.55rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: color var(--transition), border-color var(--transition);
+    }
+    .copy-btn:hover { color: var(--clr-text); border-color: var(--clr-text-dim); }
+
+    /* ── JSON Syntax Highlighting ───────────────────────── */
+    .json-key    { color: #93c5fd; }
+    .json-string { color: #86efac; }
+    .json-number { color: #fbbf24; }
+    .json-bool   { color: #c084fc; }
+    .json-null   { color: #94a3b8; font-style: italic; }
+
+    /* ── Footer ─────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: clamp(1.5rem, 3vw, 2.5rem) 0 clamp(1rem, 2vw, 1.5rem);
+      color: var(--clr-text-dim);
+      font-size: 0.8rem;
+    }
+
+    /* ── Utility ────────────────────────────────────────── */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); border: 0;
+    }
+
+    /* ── Project status color indicators ────────────────── */
+    .status-dot {
+      display: inline-block;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      margin-right: 0.25rem;
+      vertical-align: middle;
+    }
+    .status-dot.green  { background: var(--clr-success); box-shadow: 0 0 6px rgba(34,197,94,.5); }
+    .status-dot.yellow { background: var(--clr-warning); box-shadow: 0 0 6px rgba(245,158,11,.5); }
+    .status-dot.red    { background: var(--clr-error);   box-shadow: 0 0 6px rgba(239,68,68,.5); }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <!-- Header -->
+    <header>
+      <h1>🚀 RT Report Automation</h1>
+      <p>Trigger LLM summarization for your project</p>
+    </header>
+
+    <form id="triggerForm" novalidate>
+      <!-- ── CORS Proxy Toggle ─────────────────────────── -->
+      <div class="toggle-group">
+        <span class="toggle-label">⚠️ Enable CORS Proxy (for testing)</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="corsProxyToggle" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- ── LLM Model Overrides ───────────────────────── -->
+      <div class="section">
+        <h2 class="section-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/>
+            <circle cx="12" cy="15" r="2"/>
+          </svg>
+          LLM Model Overrides
+        </h2>
+        <div class="grid">
+          <div class="field">
+            <label for="provider">Provider</label>
+            <select id="provider" name="provider">
+              <option value="google_genai" selected>Google GenAI</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="azure_openai">Azure OpenAI</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="model">Model</label>
+            <input type="text" id="model" name="model" value="gemini-2.5-flash" placeholder="e.g. gemini-2.5-flash" />
+          </div>
+          <div class="field">
+            <label for="temperature">Temperature</label>
+            <input type="number" id="temperature" name="temperature" value="0.7" min="0" max="2" step="0.1" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Project Metadata ──────────────────────────── -->
+      <div class="section">
+        <h2 class="section-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 9h18"/><path d="M9 21V9"/>
+          </svg>
+          Project Metadata
+        </h2>
+        <div class="grid">
+          <div class="field">
+            <label for="project_name">Project Name</label>
+            <input type="text" id="project_name" name="project_name" value="AI-Internal" placeholder="e.g. AI-Internal" required />
+          </div>
+          <div class="field">
+            <label for="project_status">Project Status</label>
+            <select id="project_status" name="project_status">
+              <option value="Green">🟢 Green</option>
+              <option value="Yellow">🟡 Yellow</option>
+              <option value="Red">🔴 Red</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="start_date">Start Date</label>
+            <input type="date" id="start_date" name="start_date" required />
+          </div>
+          <div class="field">
+            <label for="end_date">End Date</label>
+            <input type="date" id="end_date" name="end_date" required />
+          </div>
+          <div class="field full">
+            <label for="drive_link">Google Drive Link</label>
+            <input type="url" id="drive_link" name="drive_link" value="https://drive.google.com/drive/folders/1iwxHw-G4am1lliSoftEZjzmIxV38P__4" placeholder="https://drive.google.com/drive/folders/..." />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── User Metadata ─────────────────────────────── -->
+      <div class="section">
+        <h2 class="section-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          User Metadata
+        </h2>
+        <div class="grid">
+          <div class="field">
+            <label for="user_name">User Name</label>
+            <input type="text" id="user_name" name="user_name" value="anonymous" placeholder="Your name" />
+          </div>
+          <div class="field">
+            <label for="user_email">User Email</label>
+            <input type="email" id="user_email" name="user_email" value="anonymous@anonymous.com" placeholder="you@example.com" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── GitHub Metadata ───────────────────────────── -->
+      <div class="section">
+        <h2 class="section-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          GitHub Metadata
+        </h2>
+        <div class="grid">
+          <div class="field">
+            <label for="owner_name">Owner / Org</label>
+            <input type="text" id="owner_name" name="owner_name" value="rtCamp" placeholder="e.g. rtCamp" />
+          </div>
+          <div class="field">
+            <label for="repo_name">Repository Name</label>
+            <input type="text" id="repo_name" name="repo_name" value="AI-Internal" placeholder="e.g. AI-Internal" />
+          </div>
+          <div class="field">
+            <label for="project_board">Project Board</label>
+            <input type="text" id="project_board" name="project_board" value="AI-Internal" placeholder="e.g. AI-Internal" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Slack Metadata ────────────────────────────── -->
+      <div class="section">
+        <h2 class="section-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+          </svg>
+          Slack Metadata
+        </h2>
+        <div class="grid">
+          <div class="field">
+            <label for="channel_slug">Channel Slug</label>
+            <input type="text" id="channel_slug" name="channel_slug" value="ai" placeholder="e.g. ai" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Actions ───────────────────────────────────── -->
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" id="submitBtn">
+          <span class="spinner"></span>
+          <span class="btn-label">Submit &amp; Summarize</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="previewBtn">Preview JSON</button>
+        <button type="reset"  class="btn btn-secondary" id="resetBtn">Reset</button>
+      </div>
+
+      <!-- Status banner -->
+      <div class="status-banner" id="statusBanner" role="alert"></div>
+    </form>
+
+    <!-- ── Response Panel ──────────────────────────────── -->
+    <div class="response-panel" id="responsePanel">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+          Response
+        </span>
+        <span class="badge" id="responseBadge"></span>
+      </div>
+      <div class="response-body">
+        <button class="copy-btn" id="copyBtn" title="Copy to clipboard">📋 Copy</button>
+        <pre id="responseOutput"></pre>
+      </div>
+    </div>
+
+    <footer>rtCamp &middot; Report Automation Trigger &middot; <span id="year"></span></footer>
+  </div>
+
+  <script>
+    /* ── Helpers ─────────────────────────────────────── */
+    const $ = (sel) => document.querySelector(sel);
+    const year = new Date().getFullYear();
+    $('#year').textContent = year;
+
+    /* Set default dates (last Monday → this Wednesday) */
+    (() => {
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const lastMonday = new Date(today);
+      lastMonday.setDate(today.getDate() - ((dayOfWeek + 6) % 7) - 7);
+      const nextWednesday = new Date(lastMonday);
+      nextWednesday.setDate(lastMonday.getDate() + 9);
+
+      const fmt = (d) => d.toISOString().split('T')[0];
+      $('#start_date').value = fmt(lastMonday);
+      $('#end_date').value = fmt(nextWednesday);
+    })();
+
+    /* Build the payload object from form inputs */
+    function buildPayload() {
+      return {
+        llm_model_overrides: {
+          provider: $('#provider').value,
+          model: $('#model').value.trim(),
+          temperature: parseFloat($('#temperature').value) || 0.7,
+        },
+        project_metadata: {
+          start_date: $('#start_date').value,
+          end_date: $('#end_date').value,
+          project_status: $('#project_status').value,
+          project_name: $('#project_name').value.trim(),
+          drive_link: $('#drive_link').value.trim(),
+        },
+        user_metadata: {
+          user_name: $('#user_name').value.trim(),
+          user_email: $('#user_email').value.trim(),
+        },
+        github_metadata: {
+          repo_name: $('#repo_name').value.trim(),
+          owner_name: $('#owner_name').value.trim(),
+          project_board: $('#project_board').value.trim(),
+        },
+        slack_metadata: {
+          channel_slug: $('#channel_slug').value.trim(),
+        },
+      };
+    }
+
+    /* JSON syntax highlighting */
+    function highlightJSON(json) {
+      const str = JSON.stringify(json, null, 2);
+      return str.replace(
+        /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|null)/g,
+        (match) => {
+          let cls = 'json-number';
+          if (/^"/.test(match)) {
+            cls = /:$/.test(match) ? 'json-key' : 'json-string';
+          } else if (/true|false/.test(match)) {
+            cls = 'json-bool';
+          } else if (/null/.test(match)) {
+            cls = 'json-null';
+          }
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+    }
+
+    /* Show / hide status */
+    function showStatus(type, message) {
+      const banner = $('#statusBanner');
+      banner.className = `status-banner visible ${type}`;
+      banner.innerHTML = `${type === 'success' ? '✅' : '❌'} ${message}`;
+    }
+
+    function hideStatus() {
+      $('#statusBanner').className = 'status-banner';
+    }
+
+    /* Show response panel */
+    function showResponse(data, ok) {
+      const panel = $('#responsePanel');
+      const badge = $('#responseBadge');
+      const output = $('#responseOutput');
+
+      panel.classList.add('visible');
+      badge.className = `badge ${ok ? 'ok' : 'fail'}`;
+      badge.textContent = ok ? 'SUCCESS' : 'ERROR';
+      output.innerHTML = highlightJSON(data);
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    /* ── Preview ────────────────────────────────────── */
+    $('#previewBtn').addEventListener('click', () => {
+      hideStatus();
+      const payload = buildPayload();
+      showResponse(payload, true);
+      $('#responseBadge').textContent = 'PREVIEW';
+      $('#responseBadge').className = 'badge ok';
+    });
+
+    /* ── Copy ───────────────────────────────────────── */
+    $('#copyBtn').addEventListener('click', async () => {
+      const text = $('#responseOutput').textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        $('#copyBtn').textContent = '✅ Copied!';
+        setTimeout(() => ($('#copyBtn').textContent = '📋 Copy'), 1500);
+      } catch {
+        $('#copyBtn').textContent = '⚠️ Failed';
+        setTimeout(() => ($('#copyBtn').textContent = '📋 Copy'), 1500);
+      }
+    });
+
+    /* ── Submit ─────────────────────────────────────── */
+    const API_URL = 'https://rt-report-automation.rt.gw/api/llm/summarize';
+    const CORS_PROXY = 'https://corsproxy.io/?';
+
+    $('#triggerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideStatus();
+
+      const btn = $('#submitBtn');
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      const payload = buildPayload();
+      const useCorsProxy = $('#corsProxyToggle').checked;
+      
+      // Choose URL based on toggle
+      const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(API_URL)}` : API_URL;
+
+      try {
+        const res = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-api-key': '719b5e5aba17f3f21d8d4e563c863a6ddfff43b6aae6a898cf133ddf67ba9c05'
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        showResponse(data, res.ok);
+
+        if (res.ok) {
+          showStatus('success', `Request accepted — HTTP ${res.status}${useCorsProxy ? ' (via proxy)' : ''}`);
+        } else {
+          showStatus('error', `Server responded with HTTP ${res.status}`);
+        }
+      } catch (err) {
+        showStatus('error', `Network error — ${err.message}`);
+        showResponse({ 
+          error: err.message,
+          hint: useCorsProxy 
+            ? 'Try disabling the CORS proxy toggle if the API has CORS enabled.'
+            : 'Try enabling the CORS proxy toggle above to bypass CORS restrictions.'
+        }, false);
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    });
+
+    /* ── Reset ──────────────────────────────────────── */
+    $('#resetBtn').addEventListener('click', () => {
+      hideStatus();
+      $('#responsePanel').classList.remove('visible');
+    });
+  </script>
+</body>
+</html>
