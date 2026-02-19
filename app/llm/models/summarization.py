@@ -1,7 +1,7 @@
 """Schemas for LLM-based summarization requests and responses."""
 
 import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -9,7 +9,7 @@ from app.google_docs.utils.helpers import extract_folder_id_from_drive_link
 from app.llm.models import LLMProvider, SupportedModels
 
 
-class ProjectStatus(str, Enum):
+class ProjectStatus(StrEnum):
 	"""Enumeration of project statuses."""
 
 	GREEN = "Green"
