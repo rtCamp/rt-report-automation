@@ -1,6 +1,6 @@
 """LLM models definitions and configurations."""
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel
 
@@ -16,7 +16,7 @@ class ModelResponse(BaseModel):
 	max_output_tokens: int
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
 	"""Enumeration of supported LLM providers."""
 
 	OPENAI = "openai"
@@ -24,7 +24,7 @@ class LLMProvider(str, Enum):
 	ANTHROPIC = "anthropic"
 
 
-class SupportedModels(str, Enum):
+class SupportedModels(StrEnum):
 	"""Enumeration of supported LLM models."""
 
 	# OpenAI models
