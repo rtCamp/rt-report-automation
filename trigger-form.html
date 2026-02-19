@@ -587,18 +587,18 @@
     const STORAGE_KEY_RUN_ID = 'rt_report_run_id';
     const STORAGE_KEY_TIMESTAMP = 'rt_report_timestamp';
 
-    /* Save run ID to local storage */
+    /* Save event ID to local storage (stored as "run_id" key for backward compatibility) */
     function saveRunId(runId) {
       localStorage.setItem(STORAGE_KEY_RUN_ID, runId);
       localStorage.setItem(STORAGE_KEY_TIMESTAMP, Date.now().toString());
     }
 
-    /* Get run ID from local storage */
+    /* Get event ID from local storage */
     function getSavedRunId() {
       return localStorage.getItem(STORAGE_KEY_RUN_ID);
     }
 
-    /* Clear run ID from local storage */
+    /* Clear event ID from local storage */
     function clearRunId() {
       localStorage.removeItem(STORAGE_KEY_RUN_ID);
       localStorage.removeItem(STORAGE_KEY_TIMESTAMP);
@@ -613,10 +613,11 @@
       }
     }
 
-    /* Check run status from Inngest API */
+    /* Check run status from Inngest API using event ID */
     async function checkRunStatus(runId) {
       try {
         const useCorsProxy = $('#corsProxyToggle').checked;
+        // runId is actually the event ID - query all runs for this event
         const inngestUrl = `${INNGEST_API_URL}/${runId}/runs`;
         const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(inngestUrl)}` : inngestUrl;
         const res = await fetch(targetUrl, {
@@ -866,13 +867,13 @@
         const data = await res.json();
 
         if (res.ok) {
-          // Extract run_id — API returns { run_ids: ["..."] }
-          const runId = (data.run_ids && data.run_ids[0])
-            || data.run_id
-            || (data.data && data.data[0] && data.data[0].run_id);
+          // Extract event ID — API returns { ids: ["..."] }
+          const eventId = (data.ids && data.ids[0])
+            || data.id
+            || (data.data && data.data[0] && data.data[0].id);
           
-          if (runId) {
-            startPolling(runId);
+          if (eventId) {
+            startPolling(eventId);
           } else {
             showSuccess(`Request accepted — HTTP ${res.status}${useCorsProxy ? ' (via proxy)' : ''}`);
           }
