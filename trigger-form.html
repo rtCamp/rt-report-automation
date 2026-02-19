@@ -291,101 +291,73 @@
 
     /* ── Status Banner ──────────────────────────────────── */
     .status-banner {
-      padding: 0.75rem 1rem;
+      padding: 1rem 1.25rem;
       border-radius: var(--radius-sm);
-      font-size: 0.88rem;
+      font-size: 0.92rem;
       font-weight: 500;
-      margin-top: 1rem;
+      margin-top: 1.25rem;
       display: none;
-      align-items: center;
-      gap: 0.5rem;
+      flex-direction: column;
+      gap: 0.6rem;
     }
     .status-banner.visible { display: flex; }
 
     .status-banner.success {
-      background: rgba(34,197,94,.1);
-      border: 1px solid rgba(34,197,94,.3);
+      background: rgba(34,197,94,.08);
+      border: 1px solid rgba(34,197,94,.25);
       color: var(--clr-success);
     }
     .status-banner.error {
-      background: rgba(239,68,68,.1);
-      border: 1px solid rgba(239,68,68,.3);
+      background: rgba(239,68,68,.08);
+      border: 1px solid rgba(239,68,68,.25);
       color: var(--clr-error);
     }
-
-    /* ── Response Panel ─────────────────────────────────── */
-    .response-panel {
-      margin-top: clamp(1rem, 2vw, 1.5rem);
-      display: none;
+    .status-banner.info {
+      background: rgba(99,102,241,.08);
+      border: 1px solid rgba(99,102,241,.25);
+      color: var(--clr-primary-hover);
     }
-    .response-panel.visible { display: block; }
 
-    .response-panel .panel-header {
+    .status-banner .status-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
       gap: 0.5rem;
-      margin-bottom: 0.75rem;
     }
 
-    .response-panel .panel-title {
-      font-size: clamp(1rem, 1.6vw, 1.15rem);
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
+    .status-banner .status-spinner {
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(99,102,241,.3);
+      border-top-color: var(--clr-primary);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      flex-shrink: 0;
     }
 
-    .response-panel .badge {
-      font-size: 0.75rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 999px;
-      font-weight: 600;
-    }
-    .badge.ok    { background: rgba(34,197,94,.15); color: var(--clr-success); }
-    .badge.fail  { background: rgba(239,68,68,.15); color: var(--clr-error); }
-
-    .response-body {
-      background: var(--clr-code-bg);
-      border: 1px solid var(--clr-border);
-      border-radius: var(--radius-sm);
-      padding: clamp(0.75rem, 2vw, 1.25rem);
-      overflow-x: auto;
-      position: relative;
-    }
-
-    .response-body pre {
-      margin: 0;
-      font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
-      font-size: 0.85rem;
-      line-height: 1.65;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .copy-btn {
-      position: absolute;
-      top: 0.55rem;
-      right: 0.55rem;
-      background: var(--clr-surface);
-      border: 1px solid var(--clr-border);
+    .status-banner .status-detail {
+      font-size: 0.8rem;
       color: var(--clr-text-dim);
-      border-radius: var(--radius-sm);
-      padding: 0.3rem 0.55rem;
-      font-size: 0.75rem;
-      cursor: pointer;
-      font-family: var(--font);
-      transition: color var(--transition), border-color var(--transition);
+      font-family: 'Fira Code', 'JetBrains Mono', monospace;
     }
-    .copy-btn:hover { color: var(--clr-text); border-color: var(--clr-text-dim); }
 
-    /* ── JSON Syntax Highlighting ───────────────────────── */
-    .json-key    { color: #93c5fd; }
-    .json-string { color: #86efac; }
-    .json-number { color: #fbbf24; }
-    .json-bool   { color: #c084fc; }
-    .json-null   { color: #94a3b8; font-style: italic; }
+    .status-banner .doc-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.2rem;
+      background: var(--clr-primary);
+      color: #fff;
+      text-decoration: none;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background var(--transition);
+      margin-top: 0.25rem;
+      width: fit-content;
+    }
+    .status-banner .doc-link:hover {
+      background: var(--clr-primary-hover);
+    }
 
     /* ── Footer ─────────────────────────────────────────── */
     footer {
@@ -576,22 +548,7 @@
       <div class="status-banner" id="statusBanner" role="alert"></div>
     </form>
 
-    <!-- ── Response Panel ──────────────────────────────── -->
-    <div class="response-panel" id="responsePanel">
-      <div class="panel-header">
-        <span class="panel-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-          </svg>
-          Response
-        </span>
-        <span class="badge" id="responseBadge"></span>
-      </div>
-      <div class="response-body">
-        <button class="copy-btn" id="copyBtn" title="Copy to clipboard">📋 Copy</button>
-        <pre id="responseOutput"></pre>
-      </div>
-    </div>
+
 
     <footer>rtCamp &middot; Report Automation Trigger &middot; <span id="year"></span></footer>
   </div>
@@ -615,6 +572,174 @@
       $('#start_date').value = fmt(lastMonday);
       $('#end_date').value = fmt(nextWednesday);
     })();
+
+    /* ── Polling & Status Management ────────────────── */
+    const INNGEST_API_URL = 'https://api.inngest.com/v1/events';
+    const INNGEST_TOKEN = 'Bearer YOUR_INNGEST_SIGNING_KEY';
+    const INITIAL_POLL_DELAY = 30000; // 30 seconds
+    const SUBSEQUENT_POLL_DELAY = 15000; // 15 seconds
+    const MAX_OUTPUT_RETRIES = 3;
+
+    let pollIntervalId = null;
+    let outputRetryCount = 0;
+
+    /* Local storage keys */
+    const STORAGE_KEY_RUN_ID = 'rt_report_run_id';
+    const STORAGE_KEY_TIMESTAMP = 'rt_report_timestamp';
+
+    /* Save run ID to local storage */
+    function saveRunId(runId) {
+      localStorage.setItem(STORAGE_KEY_RUN_ID, runId);
+      localStorage.setItem(STORAGE_KEY_TIMESTAMP, Date.now().toString());
+    }
+
+    /* Get run ID from local storage */
+    function getSavedRunId() {
+      return localStorage.getItem(STORAGE_KEY_RUN_ID);
+    }
+
+    /* Clear run ID from local storage */
+    function clearRunId() {
+      localStorage.removeItem(STORAGE_KEY_RUN_ID);
+      localStorage.removeItem(STORAGE_KEY_TIMESTAMP);
+      outputRetryCount = 0;
+    }
+
+    /* Stop polling */
+    function stopPolling() {
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+        pollIntervalId = null;
+      }
+    }
+
+    /* Check run status from Inngest API */
+    async function checkRunStatus(runId) {
+      try {
+        const useCorsProxy = $('#corsProxyToggle').checked;
+        const inngestUrl = `${INNGEST_API_URL}/${runId}/runs`;
+        const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(inngestUrl)}` : inngestUrl;
+        const res = await fetch(targetUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': INNGEST_TOKEN,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch run status: ${res.status}`);
+        }
+
+        const data = await res.json();
+        return data;
+      } catch (error) {
+        console.error('Error checking run status:', error);
+        throw error;
+      }
+    }
+
+    /* Handle run status response */
+    function handleRunStatus(data, runId) {
+      if (!data || !data.data || data.data.length === 0) {
+        showError('No run data found.', runId);
+        stopPolling();
+        clearRunId();
+        return;
+      }
+
+      const run = data.data[0];
+      const status = run.status;
+      const output = run.output; 
+
+      switch (status) {
+        case 'Failed':
+          showError('Document generation failed.', runId);
+          stopPolling();
+          clearRunId();
+          break;
+
+        case 'Cancelled':
+          showError('Document generation was cancelled.', runId);
+          stopPolling();
+          clearRunId();
+          break;
+
+        case 'Running':
+          showLoading('Document generation in progress…', runId);
+          break;
+
+        case 'Completed':
+          if (output && output.document_url) {
+            showSuccess('Document generated successfully!', output.document_url);
+            stopPolling();
+            clearRunId();
+          } else {
+            outputRetryCount++;
+            if (outputRetryCount >= MAX_OUTPUT_RETRIES) {
+              showError('Process completed but no document was generated.', runId);
+              stopPolling();
+              clearRunId();
+            } else {
+              showLoading(`Waiting for document output… (attempt ${outputRetryCount}/${MAX_OUTPUT_RETRIES})`, runId);
+            }
+          }
+          break;
+
+        default:
+          showLoading(`Processing… (status: ${status})`, runId);
+          break;
+      }
+    }
+
+    /* Start polling for run status */
+    function startPolling(runId, initialDelay = INITIAL_POLL_DELAY) {
+      saveRunId(runId);
+      stopPolling(); // Clear any existing polling
+
+      // Show initial loading status
+      showLoading(`Request submitted. Checking status in ${Math.round(initialDelay / 1000)}s…`, runId);
+
+      // Start polling after initial delay
+      setTimeout(async () => {
+        // First check
+        try {
+          const data = await checkRunStatus(runId);
+          handleRunStatus(data, runId);
+        } catch (error) {
+          showError(`Failed to check status: ${error.message}`, runId);
+        }
+
+        // Continue polling every 15 seconds if not stopped
+        pollIntervalId = setInterval(async () => {
+          try {
+            const data = await checkRunStatus(runId);
+            handleRunStatus(data, runId);
+          } catch (error) {
+            console.error('Polling error:', error);
+            showError(`Error checking status: ${error.message}`, runId);
+          }
+        }, SUBSEQUENT_POLL_DELAY);
+      }, initialDelay);
+    }
+
+    /* Check for saved run ID on page load */
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedRunId = getSavedRunId();
+      if (savedRunId) {
+        const timestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
+        const age = Date.now() - parseInt(timestamp || '0');
+        
+        // If saved run is less than 10 minutes old, resume polling
+        if (age < 600000) {
+          showLoading(`Resuming status check…`, savedRunId);
+          startPolling(savedRunId, 5000);
+        } else {
+          // Too old, clear it
+          clearRunId();
+        }
+      }
+    });
 
     /* Build the payload object from form inputs */
     function buildPayload() {
@@ -646,69 +771,58 @@
       };
     }
 
-    /* JSON syntax highlighting */
-    function highlightJSON(json) {
-      const str = JSON.stringify(json, null, 2);
-      return str.replace(
-        /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|null)/g,
-        (match) => {
-          let cls = 'json-number';
-          if (/^"/.test(match)) {
-            cls = /:$/.test(match) ? 'json-key' : 'json-string';
-          } else if (/true|false/.test(match)) {
-            cls = 'json-bool';
-          } else if (/null/.test(match)) {
-            cls = 'json-null';
-          }
-          return `<span class="${cls}">${match}</span>`;
-        }
-      );
-    }
 
     /* Show / hide status */
-    function showStatus(type, message) {
+    function showStatus(type, html) {
       const banner = $('#statusBanner');
       banner.className = `status-banner visible ${type}`;
-      banner.innerHTML = `${type === 'success' ? '✅' : '❌'} ${message}`;
+      banner.innerHTML = html;
+      banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showLoading(message, runId) {
+      showStatus('info', `
+        <div class="status-row">
+          <span class="status-spinner"></span>
+          <span>${message}</span>
+        </div>
+        ${runId ? `<span class="status-detail">Run ID: ${runId}</span>` : ''}
+      `);
+    }
+
+    function showSuccess(message, docUrl) {
+      showStatus('success', `
+        <div class="status-row">✅ ${message}</div>
+        ${docUrl ? `<a class="doc-link" href="${docUrl}" target="_blank" rel="noopener noreferrer">
+          📄 Open Document
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </a>` : ''}
+      `);
+    }
+
+    function showError(message, runId) {
+      showStatus('error', `
+        <div class="status-row">❌ ${message}</div>
+        ${runId ? `<span class="status-detail">Run ID: ${runId}</span>` : ''}
+      `);
     }
 
     function hideStatus() {
       $('#statusBanner').className = 'status-banner';
     }
 
-    /* Show response panel */
-    function showResponse(data, ok) {
-      const panel = $('#responsePanel');
-      const badge = $('#responseBadge');
-      const output = $('#responseOutput');
-
-      panel.classList.add('visible');
-      badge.className = `badge ${ok ? 'ok' : 'fail'}`;
-      badge.textContent = ok ? 'SUCCESS' : 'ERROR';
-      output.innerHTML = highlightJSON(data);
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
     /* ── Preview ────────────────────────────────────── */
     $('#previewBtn').addEventListener('click', () => {
       hideStatus();
       const payload = buildPayload();
-      showResponse(payload, true);
-      $('#responseBadge').textContent = 'PREVIEW';
-      $('#responseBadge').className = 'badge ok';
-    });
-
-    /* ── Copy ───────────────────────────────────────── */
-    $('#copyBtn').addEventListener('click', async () => {
-      const text = $('#responseOutput').textContent;
-      try {
-        await navigator.clipboard.writeText(text);
-        $('#copyBtn').textContent = '✅ Copied!';
-        setTimeout(() => ($('#copyBtn').textContent = '📋 Copy'), 1500);
-      } catch {
-        $('#copyBtn').textContent = '⚠️ Failed';
-        setTimeout(() => ($('#copyBtn').textContent = '📋 Copy'), 1500);
-      }
+      const json = JSON.stringify(payload, null, 2);
+      showStatus('info', `
+        <div class="status-row">📋 Payload Preview</div>
+        <pre style="margin:0.5rem 0 0;font-family:'Fira Code',monospace;font-size:0.82rem;white-space:pre-wrap;color:var(--clr-text);line-height:1.5;">${json}</pre>
+      `);
     });
 
     /* ── Submit ─────────────────────────────────────── */
@@ -718,6 +832,8 @@
     $('#triggerForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       hideStatus();
+      stopPolling(); // Stop any existing polling
+      clearRunId(); // Clear any previous run ID
 
       const btn = $('#submitBtn');
       btn.classList.add('loading');
@@ -734,27 +850,32 @@
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'x-api-key': '719b5e5aba17f3f21d8d4e563c863a6ddfff43b6aae6a898cf133ddf67ba9c05'
+            'x-api-key': 'YOUR_API_KEY'
           },
           body: JSON.stringify(payload),
         });
 
         const data = await res.json();
-        showResponse(data, res.ok);
 
         if (res.ok) {
-          showStatus('success', `Request accepted — HTTP ${res.status}${useCorsProxy ? ' (via proxy)' : ''}`);
+          // Extract run_id — API returns { run_ids: ["..."] }
+          const runId = (data.run_ids && data.run_ids[0])
+            || data.run_id
+            || (data.data && data.data[0] && data.data[0].run_id);
+          
+          if (runId) {
+            startPolling(runId);
+          } else {
+            showSuccess(`Request accepted — HTTP ${res.status}${useCorsProxy ? ' (via proxy)' : ''}`);
+          }
         } else {
-          showStatus('error', `Server responded with HTTP ${res.status}`);
+          showError(`Server responded with HTTP ${res.status}`);
         }
       } catch (err) {
-        showStatus('error', `Network error — ${err.message}`);
-        showResponse({ 
-          error: err.message,
-          hint: useCorsProxy 
-            ? 'Try disabling the CORS proxy toggle if the API has CORS enabled.'
-            : 'Try enabling the CORS proxy toggle above to bypass CORS restrictions.'
-        }, false);
+        const hint = useCorsProxy
+          ? 'Try disabling the CORS proxy toggle if the API has CORS enabled.'
+          : 'Try enabling the CORS proxy toggle above to bypass CORS restrictions.';
+        showError(`Network error — ${err.message}. ${hint}`);
       } finally {
         btn.classList.remove('loading');
         btn.disabled = false;
@@ -764,7 +885,14 @@
     /* ── Reset ──────────────────────────────────────── */
     $('#resetBtn').addEventListener('click', () => {
       hideStatus();
-      $('#responsePanel').classList.remove('visible');
+      stopPolling();
+      clearRunId();
+    });
+
+    /* ── Cleanup on page unload ─────────────────────── */
+    window.addEventListener('beforeunload', () => {
+      // Don't clear run ID on refresh, keep it in localStorage
+      stopPolling();
     });
   </script>
 </body>
