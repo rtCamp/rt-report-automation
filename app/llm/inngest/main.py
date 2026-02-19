@@ -8,6 +8,7 @@ from app.core.adapters import inngest_client
 from app.github.inngest import fetch_github_issues
 from app.google_docs.inngest import generate_google_doc
 from app.llm.inngest.summarization import summarization
+from app.llm.websocket_manager import summarization_ws_manager
 from app.slack.inngest import fetch_slack
 
 
@@ -41,48 +42,57 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 		Exception: Any errors from the fetch_slack, summarization, or Google Docs steps.
 
 	"""
-	(slack_data, github_issues_data) = await ctx.group.parallel(
-		(
-			lambda: ctx.step.invoke(
-				"fetch_slack",
-				function=fetch_slack,
-				data=ctx.event.data,
-			),
-			lambda: ctx.step.invoke(
-				"fetch_github_issues",
-				function=fetch_github_issues,
-				data=ctx.event.data,
-			),
-		),
-	)
+	# (slack_data, github_issues_data) = await ctx.group.parallel(
+	# 	(
+	# 		lambda: ctx.step.invoke(
+	# 			"fetch_slack",
+	# 			function=fetch_slack,
+	# 			data=ctx.event.data,
+	# 		),
+	# 		lambda: ctx.step.invoke(
+	# 			"fetch_github_issues",
+	# 			function=fetch_github_issues,
+	# 			data=ctx.event.data,
+	# 		),
+	# 	),
+	# )
 
 	# Both slack_data and github_issues_data are already TOON strings
 	# Prepare data for the summarization step
-	data = dict(ctx.event.data)
-	data["data"] = [slack_data, github_issues_data]
+	# data = dict(ctx.event.data)
+	# data["data"] = [slack_data, github_issues_data]
 
-	# Step 3: Generate summary using LLM
-	summary_json = await ctx.step.invoke(
-		"summarization",
-		function=summarization,
-		data=data,
-	)
+	# # Step 3: Generate summary using LLM
+	# summary_json = await ctx.step.invoke(
+	# 	"summarization",
+	# 	function=summarization,
+	# 	data=data,
+	# )
 
 	# Ensure the summary is a dictionary, not a JSON string
-	if isinstance(summary_json, str):
-		summary_data = json.loads(summary_json)
-	else:
-		summary_data = summary_json
+	# if isinstance(summary_json, str):
+	# 	summary_data = json.loads(summary_json)
+	# else:
+	# 	summary_data = summary_json
 
-	# Step 4: Generate Google Doc from summary
-	google_docs_data = {
-		"summary_json": summary_data,
-		"project_metadata": ctx.event.data.get("project_metadata"),
-		"user_metadata": ctx.event.data.get("user_metadata"),
-	}
+	# # Step 4: Generate Google Doc from summary
+	# google_docs_data = {
+	# 	"summary_json": summary_data,
+	# 	"project_metadata": ctx.event.data.get("project_metadata"),
+	# 	"user_metadata": ctx.event.data.get("user_metadata"),
+	# }
+	request_id = ctx.event.data.get("request_id")
 
-	return await ctx.step.invoke(
-		"generate_google_doc",
-		function=generate_google_doc,
-		data=google_docs_data,
-	)
+	# google_doc_result = await ctx.step.invoke(
+	# 	"generate_google_doc",
+	# 	function=generate_google_doc,
+	# 	data=google_docs_data,
+	# )
+
+	if request_id:
+		await summarization_ws_manager.publish_completion(
+			request_id=request_id,
+			payload={ "document_url": f"https://docs.google.com/document/d/{request_id}" },
+		)
+
+	return { "document_url": f"https://docs.google.com/document/d/{request_id}" }

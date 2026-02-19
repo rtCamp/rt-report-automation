@@ -150,6 +150,11 @@ class ModelMetadata(BaseModel):
 class SummarizeRequest(BaseModel):
 	"""Request schema for LLM-based summarization."""
 
+	request_id: str | None = Field(
+		description="Client-generated request ID for websocket updates",
+		examples=["f37af14e-8d0f-4aa4-a6b2-a4f7a7250be9"],
+		default=None,
+	)
 	llm_model_overrides: ModelMetadata
 	project_metadata: ProjectMetadata
 	user_metadata: UserMetadata
@@ -160,6 +165,10 @@ class SummarizeRequest(BaseModel):
 class SummarizeResponse(BaseModel):
 	"""Response schema for LLM-based summarization."""
 
+	request_id: str = Field(
+		description="Client correlation ID used for websocket updates",
+		examples=["f37af14e-8d0f-4aa4-a6b2-a4f7a7250be9"],
+	)
 	run_ids: list[str] = Field(
 		description="Unique identifier for the summarization run",
 		examples=[["123e4567-e89b-12d3-a456"]],

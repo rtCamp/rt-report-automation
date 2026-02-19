@@ -32,7 +32,6 @@ def register_routes(app: FastAPI):
 	app.include_router(
 		llm_router,
 		prefix=settings.API_PREFIX,
-		dependencies=[Depends(validate_api_key)],
 	)
 	app.include_router(
 		google_docs_router,
