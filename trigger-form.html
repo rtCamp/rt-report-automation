@@ -798,10 +798,20 @@
       `);
     }
 
+    function isValidHttpUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+      } catch {
+        return false;
+      }
+    }
+
     function showSuccess(message, docUrl) {
+      const safeUrl = docUrl && isValidHttpUrl(docUrl) ? docUrl : null;
       showStatus('success', `
         <div class="status-row">✅ ${message}</div>
-        ${docUrl ? `<a class="doc-link" href="${docUrl}" target="_blank" rel="noopener noreferrer">
+        ${safeUrl ? `<a class="doc-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer">
           📄 Open Document
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -866,16 +876,17 @@
         const data = await res.json();
 
         if (res.ok) {
-          // Extract run_id — API returns { run_ids: ["..."] }
-          const runId = (data.run_ids && data.run_ids[0])
-            || data.run_id
-            || (data.data && data.data[0] && data.data[0].run_id);
-          
-          if (runId) {
-            startPolling(runId);
-          } else {
-            showSuccess(`Request accepted — HTTP ${res.status}${useCorsProxy ? ' (via proxy)' : ''}`);
+          // Extract run_id from response — expected format: { run_ids: ["..."] }
+          // from the /api/llm/summarize endpoint (Inngest event trigger)
+          const runId = data.run_ids?.[0];
+
+          if (!runId) {
+            console.warn('Unexpected API response format — no run_ids found:', data);
+            showError('Unexpected response: no run ID returned from server.');
+            return;
           }
+
+          startPolling(runId);
         } else {
           showError(`Server responded with HTTP ${res.status}`);
         }
