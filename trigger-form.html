@@ -723,22 +723,30 @@
       }, initialDelay);
     }
 
-    /* Check for saved run ID on page load */
+    /* Check for saved state on page load */
     window.addEventListener('DOMContentLoaded', () => {
+      // Restore CORS proxy toggle state (default: checked)
+      const savedCors = localStorage.getItem('rt_cors_proxy');
+      $('#corsProxyToggle').checked = savedCors === null ? true : savedCors === 'true';
+
+      // Resume polling if there's a pending run
       const savedRunId = getSavedRunId();
       if (savedRunId) {
         const timestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
         const age = Date.now() - parseInt(timestamp || '0');
         
-        // If saved run is less than 10 minutes old, resume polling
         if (age < 600000) {
           showLoading(`Resuming status check…`, savedRunId);
           startPolling(savedRunId, 5000);
         } else {
-          // Too old, clear it
           clearRunId();
         }
       }
+    });
+
+    /* Persist CORS toggle state */
+    $('#corsProxyToggle').addEventListener('change', (e) => {
+      localStorage.setItem('rt_cors_proxy', e.target.checked);
     });
 
     /* Build the payload object from form inputs */
