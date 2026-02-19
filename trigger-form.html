@@ -579,9 +579,11 @@
     const INITIAL_POLL_DELAY = 30000; // 30 seconds
     const SUBSEQUENT_POLL_DELAY = 15000; // 15 seconds
     const MAX_OUTPUT_RETRIES = 3;
+    const MAX_POLL_DURATION = 600000; // 10 minutes
 
     let pollIntervalId = null;
     let outputRetryCount = 0;
+    let pollStartTime = null;
 
     /* Local storage keys */
     const STORAGE_KEY_RUN_ID = 'rt_report_run_id';
@@ -611,6 +613,12 @@
         clearInterval(pollIntervalId);
         pollIntervalId = null;
       }
+      pollStartTime = null;
+    }
+
+    /* Check if polling has exceeded max duration */
+    function hasPollingTimedOut() {
+      return pollStartTime && (Date.now() - pollStartTime) >= MAX_POLL_DURATION;
     }
 
     /* Check run status from Inngest API */
@@ -696,6 +704,7 @@
     function startPolling(runId, initialDelay = INITIAL_POLL_DELAY) {
       saveRunId(runId);
       stopPolling(); // Clear any existing polling
+      pollStartTime = Date.now();
 
       // Show initial loading status
       showLoading(`Request submitted. Checking status in ${Math.round(initialDelay / 1000)}s…`, runId);
@@ -712,6 +721,12 @@
 
         // Continue polling every 15 seconds if not stopped
         pollIntervalId = setInterval(async () => {
+          if (hasPollingTimedOut()) {
+            showError('Polling timed out after 10 minutes. The run may still be in progress.', runId);
+            stopPolling();
+            clearRunId();
+            return;
+          }
           try {
             const data = await checkRunStatus(runId);
             handleRunStatus(data, runId);
