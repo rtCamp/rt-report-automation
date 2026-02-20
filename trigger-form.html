@@ -794,11 +794,14 @@
         const timestamp = localStorage.getItem(STORAGE_KEY_TIMESTAMP);
         const age = Date.now() - parseInt(timestamp || '0');
         
-        if (age < 600000) {
+        if (age >= 600000) {
+          clearRunId();
+        } else if (!$('#inngest_key').value.trim()) {
+          showError('A previous run is pending but no Inngest key is available. Please enter your Inngest Signing Key to resume.', savedRunId);
+          clearRunId();
+        } else {
           showLoading(`Resuming status check…`, savedRunId);
           startPolling(savedRunId, 5000);
-        } else {
-          clearRunId();
         }
       }
     });
