@@ -6,6 +6,7 @@ from app.core.auth import validate_api_key
 from app.core.config import settings
 from app.google_docs.controller import router as google_docs_router
 from app.health.controller import router as health_router
+from app.inngest_proxy import inngest_proxy_router
 from app.llm import llm_router
 
 
@@ -36,6 +37,11 @@ def register_routes(app: FastAPI):
 	)
 	app.include_router(
 		google_docs_router,
+		prefix=settings.API_PREFIX,
+		dependencies=[Depends(validate_api_key)],
+	)
+	app.include_router(
+		inngest_proxy_router,
 		prefix=settings.API_PREFIX,
 		dependencies=[Depends(validate_api_key)],
 	)
