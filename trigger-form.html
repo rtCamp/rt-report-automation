@@ -401,7 +401,7 @@
       <div class="toggle-group">
         <span class="toggle-label">⚠️ Enable CORS Proxy (for testing)</span>
         <label class="toggle-switch">
-          <input type="checkbox" id="corsProxyToggle" checked />
+          <input type="checkbox" id="corsProxyToggle" />
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -412,17 +412,13 @@
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
           </svg>
-          API Keys
+          API Key
         </h2>
-        <p style="font-size:0.82rem;color:var(--clr-text-dim);margin-bottom:0.75rem;">Keys are stored in your browser's localStorage and never sent to third parties.</p>
+        <p style="font-size:0.82rem;color:var(--clr-text-dim);margin-bottom:0.75rem;">Key is stored in your browser's localStorage and never sent to third parties.</p>
         <div class="grid">
           <div class="field full">
             <label for="api_key">App API Key</label>
             <input type="password" id="api_key" name="api_key" placeholder="Enter your x-api-key" required />
-          </div>
-          <div class="field full">
-            <label for="inngest_key">Inngest Signing Key</label>
-            <input type="password" id="inngest_key" name="inngest_key" placeholder="signkey-prod-..." required />
           </div>
         </div>
       </div>
@@ -595,10 +591,6 @@
     })();
 
     /* ── Polling & Status Management ────────────────── */
-    const INNGEST_API_URL = 'https://api.inngest.com/v1/events';
-    function getInngestToken() {
-      return `Bearer ${$('#inngest_key').value.trim()}`;
-    }
     function getApiKey() {
       return $('#api_key').value.trim();
     }
@@ -647,17 +639,16 @@
       return pollStartTime && (Date.now() - pollStartTime) >= MAX_POLL_DURATION;
     }
 
-    /* Check run status from Inngest API */
+    /* Check run status via backend proxy (avoids CORS issues with Inngest API) */
     async function checkRunStatus(runId) {
       try {
         const useCorsProxy = $('#corsProxyToggle').checked;
-        const inngestUrl = `${INNGEST_API_URL}/${runId}/runs`;
-        const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(inngestUrl)}` : inngestUrl;
+        const statusUrl = `${API_URL}${RUN_STATUS_ENDPOINT}/${runId}`;
+        const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(statusUrl)}` : statusUrl;
         const res = await fetch(targetUrl, {
           method: 'GET',
           headers: {
-            'Authorization': getInngestToken(),
-            'Content-Type': 'application/json'
+            'x-api-key': getApiKey(),
           }
         });
 
@@ -764,25 +755,20 @@
       }, initialDelay);
     }
 
-    /* Persist API keys in localStorage */
+    /* Persist API key in localStorage */
     const STORAGE_KEY_API_KEY = 'rt_api_key';
-    const STORAGE_KEY_INNGEST_KEY = 'rt_inngest_key';
 
     function saveApiKeys() {
       localStorage.setItem(STORAGE_KEY_API_KEY, $('#api_key').value.trim());
-      localStorage.setItem(STORAGE_KEY_INNGEST_KEY, $('#inngest_key').value.trim());
     }
 
     $('#api_key').addEventListener('change', saveApiKeys);
-    $('#inngest_key').addEventListener('change', saveApiKeys);
 
     /* Check for saved state on page load */
     window.addEventListener('DOMContentLoaded', () => {
-      // Restore API keys from localStorage
+      // Restore API key from localStorage
       const savedApiKey = localStorage.getItem(STORAGE_KEY_API_KEY);
-      const savedInngestKey = localStorage.getItem(STORAGE_KEY_INNGEST_KEY);
       if (savedApiKey) $('#api_key').value = savedApiKey;
-      if (savedInngestKey) $('#inngest_key').value = savedInngestKey;
 
       // Restore CORS proxy toggle state (default: checked)
       const savedCors = localStorage.getItem('rt_cors_proxy');
@@ -796,8 +782,8 @@
         
         if (age >= 600000) {
           clearRunId();
-        } else if (!$('#inngest_key').value.trim()) {
-          showError('A previous run is pending but no Inngest key is available. Please enter your Inngest Signing Key to resume.', savedRunId);
+        } else if (!$('#api_key').value.trim()) {
+          showError('A previous run is pending but no API key is available. Please enter your App API Key to resume.', savedRunId);
           clearRunId();
         } else {
           showLoading(`Resuming status check…`, savedRunId);
@@ -906,7 +892,9 @@
     });
 
     /* ── Submit ─────────────────────────────────────── */
-    const API_URL = 'https://rt-report-automation.rt.gw/api/llm/summarize';
+    const API_URL = 'https://rt-report-automation.rt.gw/api';
+    const SUMMARIZE_ENDPOINT = '/llm/summarize';
+    const RUN_STATUS_ENDPOINT = '/inngest/runs';
     const CORS_PROXY = 'https://corsproxy.io/?';
 
     $('#triggerForm').addEventListener('submit', async (e) => {
@@ -915,9 +903,9 @@
       stopPolling(); // Stop any existing polling
       clearRunId(); // Clear any previous run ID
 
-      // Validate API keys are present
-      if (!getApiKey() || !$('#inngest_key').value.trim()) {
-        showError('Please enter both API keys before submitting.');
+      // Validate API key is present
+      if (!getApiKey()) {
+        showError('Please enter the API key before submitting.');
         return;
       }
 
@@ -932,7 +920,8 @@
       const useCorsProxy = $('#corsProxyToggle').checked;
       
       // Choose URL based on toggle
-      const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(API_URL)}` : API_URL;
+      const summarizeUrl = `${API_URL}${SUMMARIZE_ENDPOINT}`;
+      const targetUrl = useCorsProxy ? `${CORS_PROXY}${encodeURIComponent(summarizeUrl)}` : summarizeUrl;
 
       try {
         const res = await fetch(targetUrl, {
