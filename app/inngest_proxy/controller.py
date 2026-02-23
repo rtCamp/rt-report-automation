@@ -1,12 +1,8 @@
 """Controller for proxying Inngest run-status requests."""
 
-import logging
-
 from fastapi import APIRouter
 
 from app.inngest_proxy.service import InngestProxyService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(
 	prefix="/inngest",

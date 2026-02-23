@@ -46,13 +46,13 @@ class InngestProxyService:
 			log_and_raise(
 				logger,
 				f"Inngest API returned HTTP {exc.response.status_code}",
-				exception_type=httpx.HTTPStatusError,
+				http_status_code=502,
 				cause=exc,
 			)
 		except Exception as exc:
 			log_and_raise(
 				logger,
 				"Failed to check run status from Inngest",
-				exception_type=exc.__class__,
+				http_status_code=502,
 				cause=exc,
 			)
