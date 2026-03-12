@@ -17,6 +17,7 @@ from app.llm.inngest.constants import (
 )
 from app.llm.models.summarization import ModelMetadata
 from app.llm.services import MapReduceSummarizationService, StuffService
+from promptguard import PromptGuard, SanitizationStrategy
 
 
 @inngest_client.create_function(
@@ -51,12 +52,20 @@ async def summarization(ctx: inngest.Context) -> str:
 		# Extract llm_model_overrides and data.
 		llm_model_data = event_data.get("llm_model_overrides", {})
 		docs_data = event_data.get("data", [])
+		guard = PromptGuard()
 
 		if not validate(docs_data, list):
 			raise
 
+		sanitized_docs = []
 		for content in docs_data:
 			validate(content, str)
+			response = guard.sanitize(
+				content,
+				strategy=SanitizationStrategy.CONSERVATIVE,
+			)
+			sanitized_docs.append(response.sanitization.sanitized)
+		docs_data = sanitized_docs
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
