@@ -6,6 +6,7 @@ import inngest
 from langchain.chat_models import init_chat_model
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langfuse import observe
+from promptguard import PromptGuard, SanitizationStrategy
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
@@ -17,7 +18,6 @@ from app.llm.inngest.constants import (
 )
 from app.llm.models.summarization import ModelMetadata
 from app.llm.services import MapReduceSummarizationService, StuffService
-from promptguard import PromptGuard, SanitizationStrategy
 
 
 @inngest_client.create_function(

@@ -3,11 +3,9 @@
 import datetime
 import logging
 import time
-from typing import Any, NoReturn, TypeGuard, TypeVar
+from typing import Any, NoReturn, TypeGuard
 
 from fastapi import HTTPException
-
-T = TypeVar("T")
 
 
 def to_unix(dt):
@@ -20,7 +18,7 @@ def to_unix(dt):
 	return int(dt)
 
 
-def validate(data: Any, type_: type[T] | tuple[type, ...]) -> TypeGuard[T]:
+def validate[T](data: Any, type_: type[T] | tuple[type, ...]) -> TypeGuard[T]:
 	"""Validate that `data` is of the given type (or tuple of types).
 
 	- Raises TypeError if not.
