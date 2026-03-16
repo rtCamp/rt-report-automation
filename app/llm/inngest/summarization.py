@@ -9,6 +9,7 @@ from langfuse import observe
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
+from app.core.services import PIIAnonymizer
 from app.core.utils import validate
 from app.llm.inngest.constants import (
 	CHUNK_OVERLAP,
@@ -57,6 +58,10 @@ async def summarization(ctx: inngest.Context) -> str:
 
 		for content in docs_data:
 			validate(content, str)
+
+		# Anonymize PII in all input documents before sending to the LLM.
+		pii_anonymizer = PIIAnonymizer()
+		docs_data = [pii_anonymizer.anonymize(content) for content in docs_data]
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
