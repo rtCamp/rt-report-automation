@@ -10,10 +10,6 @@ COPY . /app
 WORKDIR /app
 RUN uv sync --frozen --no-cache
 
-# Install pip (absent from uv venvs by default) then download the spaCy model
-# required by the PII anonymizer.
-RUN uv pip install pip && uv run python -m spacy download en_core_web_lg
-
 # Expose the application port.
 EXPOSE 8000
 
