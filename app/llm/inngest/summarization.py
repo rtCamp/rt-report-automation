@@ -1,5 +1,6 @@
 """Inngest function for LLM-based summarization using stuff/map-reduce strategy."""
 
+import asyncio
 import datetime
 
 import inngest
@@ -59,9 +60,14 @@ async def summarization(ctx: inngest.Context) -> str:
 		for content in docs_data:
 			validate(content, str)
 
-		# Anonymize PII in all input documents before sending to the LLM.
+		# Offload synchronous CPU-bound PII anonymization to a thread-pool worker
+		# so the event loop is not blocked during spaCy/Presidio processing.
 		pii_anonymizer = PIIAnonymizer()
-		docs_data = [pii_anonymizer.anonymize(content) for content in docs_data]
+		loop = asyncio.get_running_loop()
+		docs_data = await loop.run_in_executor(
+			None,
+			lambda: [pii_anonymizer.anonymize(content) for content in docs_data],
+		)
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
