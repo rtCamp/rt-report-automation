@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -26,7 +27,7 @@ def _get_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
 
 	"""
 	global _analyzer, _anonymizer  # noqa: PLW0603
-	if _analyzer is None:
+	if _analyzer is None or _anonymizer is None:
 		provider = NlpEngineProvider(
 			nlp_configuration={
 				"nlp_engine_name": "spacy",
@@ -39,6 +40,8 @@ def _get_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
 			supported_languages=["en"],
 		)
 		_anonymizer = AnonymizerEngine()
+	assert _analyzer is not None
+	assert _anonymizer is not None
 	return _analyzer, _anonymizer
 
 
@@ -68,5 +71,10 @@ class PIIAnonymizer:
 		results = analyzer.analyze(text=text, language="en")
 		if not results:
 			return text
-		anonymized = anonymizer.anonymize(text=text, analyzer_results=results)
+		# Presidio analyzer/anonymizer expose equivalent RecognizerResult models from
+		# different modules, which trips strict static type checks.
+		anonymized = anonymizer.anonymize(
+			text=text,
+			analyzer_results=cast("Any", results),
+		)
 		return anonymized.text
