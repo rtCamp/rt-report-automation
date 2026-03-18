@@ -75,6 +75,6 @@ class PIIAnonymizer:
 		# different modules, which trips strict static type checks.
 		anonymized = anonymizer.anonymize(
 			text=text,
-			analyzer_results=cast("Any", results),
+			analyzer_results=cast(Any, results),
 		)
 		return anonymized.text
