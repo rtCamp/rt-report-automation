@@ -1,5 +1,6 @@
 """Inngest function for LLM-based summarization using stuff/map-reduce strategy."""
 
+import asyncio
 import datetime
 
 import inngest
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
 from app.core.sanitizers import sanitize_prompt
+from app.core.services import PIIAnonymizer
 from app.core.utils import validate
 from app.llm.inngest.constants import (
 	CHUNK_OVERLAP,
@@ -59,7 +61,17 @@ async def summarization(ctx: inngest.Context) -> str:
 		for content in docs_data:
 			validate(content, str)
 
-		sanitized_docs = [sanitize_prompt(str(content)) for content in docs_data]
+		# Offload synchronous CPU-bound PII anonymization to a thread-pool worker
+		# so the event loop is not blocked during spaCy/Presidio processing.
+		pii_anonymizer = PIIAnonymizer()
+		loop = asyncio.get_running_loop()
+		validated_docs: list[str] = [str(content) for content in docs_data]
+		anonymized_docs: list[str] = await loop.run_in_executor(
+			None,
+			lambda: [pii_anonymizer.anonymize(doc) for doc in validated_docs],
+		)
+
+		sanitized_docs = [sanitize_prompt(content) for content in anonymized_docs]
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
