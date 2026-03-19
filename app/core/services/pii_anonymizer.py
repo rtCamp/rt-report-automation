@@ -1,13 +1,13 @@
 """PII anonymization service using Microsoft Presidio."""
 
-from __future__ import annotations
-
 import logging
 from typing import Any, cast
 
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
+
+from app.core.utils import log_and_raise
 
 _SPACY_MODEL = "en_core_web_lg"
 _logger = logging.getLogger(__name__)
@@ -28,20 +28,34 @@ def _get_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
 	"""
 	global _analyzer, _anonymizer  # noqa: PLW0603
 	if _analyzer is None or _anonymizer is None:
-		provider = NlpEngineProvider(
-			nlp_configuration={
-				"nlp_engine_name": "spacy",
-				"models": [{"lang_code": "en", "model_name": _SPACY_MODEL}],
-			}
-		)
-		nlp_engine = provider.create_engine()
-		_analyzer = AnalyzerEngine(
-			nlp_engine=nlp_engine,
-			supported_languages=["en"],
-		)
-		_anonymizer = AnonymizerEngine()
-	assert _analyzer is not None
-	assert _anonymizer is not None
+		try:
+			provider = NlpEngineProvider(
+				nlp_configuration={
+					"nlp_engine_name": "spacy",
+					"models": [{"lang_code": "en", "model_name": _SPACY_MODEL}],
+				}
+			)
+			nlp_engine = provider.create_engine()
+			_analyzer = AnalyzerEngine(
+				nlp_engine=nlp_engine,
+				supported_languages=["en"],
+			)
+			_anonymizer = AnonymizerEngine()
+		except Exception as e:
+			log_and_raise(
+				_logger,
+				"Failed to initialize Presidio engines",
+				RuntimeError,
+				cause=e,
+			)
+
+		if _analyzer is None or _anonymizer is None:
+			log_and_raise(
+				_logger,
+				"Presidio engines initialization resulted in None values",
+				RuntimeError,
+			)
+
 	return _analyzer, _anonymizer
 
 
