@@ -9,6 +9,7 @@ from langfuse import observe
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
+from app.core.sanitizers import sanitize_prompt
 from app.core.utils import validate
 from app.llm.inngest.constants import (
 	CHUNK_OVERLAP,
@@ -58,6 +59,8 @@ async def summarization(ctx: inngest.Context) -> str:
 		for content in docs_data:
 			validate(content, str)
 
+		sanitized_docs = [sanitize_prompt(str(content)) for content in docs_data]
+
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
 		llm = init_chat_model(
@@ -72,7 +75,7 @@ async def summarization(ctx: inngest.Context) -> str:
 		)
 
 		documents = text_splitter.create_documents(
-			[str(content) for content in docs_data],
+			[str(content) for content in sanitized_docs],
 		)
 
 		total_tokens = 0
