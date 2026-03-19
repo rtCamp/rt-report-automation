@@ -44,8 +44,7 @@ class StuffService:
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
 
 		langfuse_prompt = langfuse.get_prompt(self.prompt_slug)
-		prompt = PromptTemplate.from_template(langfuse_prompt.compile(format=FORMAT))
-
+		prompt = PromptTemplate.from_template(langfuse_prompt.get_langchain_prompt(format=FORMAT))
 		chain = create_stuff_documents_chain(
 			llm=self.llm,
 			output_parser=pydantic_parser,
