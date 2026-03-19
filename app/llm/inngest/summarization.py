@@ -65,12 +65,13 @@ async def summarization(ctx: inngest.Context) -> str:
 		# so the event loop is not blocked during spaCy/Presidio processing.
 		pii_anonymizer = PIIAnonymizer()
 		loop = asyncio.get_running_loop()
-		docs_data = await loop.run_in_executor(
+		validated_docs: list[str] = [str(content) for content in docs_data]
+		anonymized_docs: list[str] = await loop.run_in_executor(
 			None,
-			lambda: [pii_anonymizer.anonymize(content) for content in docs_data],
+			lambda: [pii_anonymizer.anonymize(doc) for doc in validated_docs],
 		)
 
-		sanitized_docs = [sanitize_prompt(str(content)) for content in docs_data]
+		sanitized_docs = [sanitize_prompt(content) for content in anonymized_docs]
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
