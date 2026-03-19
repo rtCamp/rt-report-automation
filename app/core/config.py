@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 	# Langfuse Configuration
 	LANGFUSE_SECRET_KEY: SecretStr
 	LANGFUSE_PUBLIC_KEY: SecretStr
-	LANGFUSE_HOST: HttpUrl = HttpUrl("https://cloud.langfuse.com")
+	LANGFUSE_HOST: HttpUrl
 
 	# Inngest Configuration
 	# INNGEST_BASE_URL: HttpUrl
