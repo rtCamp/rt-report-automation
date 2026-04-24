@@ -32,7 +32,7 @@ inngest_proxy_service = InngestProxyService()
 								"run_started_at": "2026-04-24T06:23:32.962Z",
 								"function_id": "9577baf4-7d44-572b-acb4-b04cf05e487d",
 								"function_version": 0,
-								"environment_id": "00000000-0000",
+								"environment_id": "00000000-0000-0000-0000-000000000000",  # noqa: E501
 								"event_id": "01KPZ2GTFVR7X2X4V0B1Q9QS6X",
 								"status": "Completed",
 								"ended_at": "2026-04-24T06:24:18.984143Z",
