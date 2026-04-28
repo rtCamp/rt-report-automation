@@ -266,12 +266,19 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 
 	requests: list[dict] = []
 
-	def _emit_run_styles(blk: DocBlock, rs: int) -> list[dict]:
+	def _emit_run_styles(
+		blk: DocBlock,
+		rs: int,
+		*,
+		force_bold: bool | None = None,
+	) -> list[dict]:
 		"""Return updateTextStyle requests for all styled runs in *blk*.
 
 		Args:
 			blk: DocBlock whose runs to process.
 			rs: Absolute start index of the first run.
+			force_bold: If provided, overrides the run's own bold flag.
+				Used to bold top-level list items and un-bold sub-items.
 
 		Returns:
 			List of updateTextStyle request dicts.
@@ -280,30 +287,28 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 		reqs: list[dict] = []
 		for run in blk.runs:
 			re = rs + len(run.text)
-			style: dict = {}
-			fields: list[str] = []
-			if run.bold:
-				style["bold"] = True
-				fields.append("bold")
-			if run.italic:
-				style["italic"] = True
-				fields.append("italic")
-			if run.strikethrough:
-				style["strikethrough"] = True
-				fields.append("strikethrough")
-			if run.code:
-				style["weightedFontFamily"] = {"fontFamily": "Courier New"}
-				fields.append("weightedFontFamily")
-				style["backgroundColor"] = {
-					"color": {
-						"rgbColor": {"red": 0.95, "green": 0.95, "blue": 0.95},
-					},
-				}
-				fields.append("backgroundColor")
-			if run.link:
-				style["link"] = {"url": run.link}
-				fields.append("link")
-			if fields and re > rs:
+			if re > rs:
+				# Always include bold and italic so that runs with no explicit
+				# styling explicitly clear any bold/italic inherited from the
+				# surrounding template paragraph.
+				bold = force_bold if force_bold is not None else run.bold
+				style: dict = {"bold": bold, "italic": run.italic}
+				fields: list[str] = ["bold", "italic"]
+				if run.strikethrough:
+					style["strikethrough"] = True
+					fields.append("strikethrough")
+				if run.code:
+					style["weightedFontFamily"] = {"fontFamily": "Courier New"}
+					fields.append("weightedFontFamily")
+					style["backgroundColor"] = {
+						"color": {
+							"rgbColor": {"red": 0.95, "green": 0.95, "blue": 0.95},
+						},
+					}
+					fields.append("backgroundColor")
+				if run.link:
+					style["link"] = {"url": run.link}
+					fields.append("link")
 				reqs.append(
 					{
 						"updateTextStyle": {
@@ -336,12 +341,15 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 			is_bullet = group[0].bullet
 
 			# Build full text: "\t" * level + run_text + "\n" per item.
+			# The last item omits the trailing "\n" to avoid creating an empty
+			# paragraph that the API would turn into a stray bullet point.
 			parts: list[str] = []
-			for grp_block in group:
+			for idx, grp_block in enumerate(group):
 				tab_prefix = "\t" * grp_block.list_level
-				parts.append(
-					tab_prefix + "".join(r.text for r in grp_block.runs) + "\n",
-				)
+				line = tab_prefix + "".join(r.text for r in grp_block.runs)
+				if idx < len(group) - 1:
+					line += "\n"
+				parts.append(line)
 			full_text = "".join(parts)
 
 			requests.append(
@@ -354,10 +362,14 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 			)
 
 			# Absolute run-style requests.
+			# Top-level items (list_level 0) → bold, sub-items → plain text.
 			char_pos = start_index
 			for grp_block in group:
 				char_pos += grp_block.list_level  # skip leading \t characters
-				requests.extend(_emit_run_styles(grp_block, char_pos))
+				is_parent = grp_block.list_level == 0
+				requests.extend(
+					_emit_run_styles(grp_block, char_pos, force_bold=is_parent),
+				)
 				char_pos += sum(len(r.text) for r in grp_block.runs) + 1  # +1 for \n
 
 			# CRITICAL: reset bullet membership before creating new bullets so
