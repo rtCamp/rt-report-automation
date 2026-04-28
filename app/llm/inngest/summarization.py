@@ -54,6 +54,7 @@ async def summarization(ctx: inngest.Context) -> str:
 		# Extract llm_model_overrides and data.
 		llm_model_data = event_data.get("llm_model_overrides", {})
 		docs_data = event_data.get("data", [])
+		previous_report = event_data.get("previous_report")
 
 		if not validate(docs_data, list):
 			raise
@@ -63,12 +64,26 @@ async def summarization(ctx: inngest.Context) -> str:
 
 		# Offload synchronous CPU-bound PII anonymization to a thread-pool worker
 		# so the event loop is not blocked during spaCy/Presidio processing.
+		# Uses anonymize_with_mapping for reversible anonymization — the same
+		# instance tracks consistent placeholders across all documents.
 		pii_anonymizer = PIIAnonymizer()
 		loop = asyncio.get_running_loop()
 		validated_docs: list[str] = [str(content) for content in docs_data]
-		anonymized_docs: list[str] = await loop.run_in_executor(
+
+		def _anonymize_all() -> tuple[list[str], str | None]:
+			anonymized = [
+				pii_anonymizer.anonymize_with_mapping(doc) for doc in validated_docs
+			]
+			anonymized_prev = (
+				pii_anonymizer.anonymize_with_mapping(previous_report)
+				if previous_report
+				else None
+			)
+			return anonymized, anonymized_prev
+
+		anonymized_docs, anonymized_previous_report = await loop.run_in_executor(
 			None,
-			lambda: [pii_anonymizer.anonymize(doc) for doc in validated_docs],
+			_anonymize_all,
 		)
 
 		sanitized_docs = [sanitize_prompt(content) for content in anonymized_docs]
@@ -103,15 +118,24 @@ async def summarization(ctx: inngest.Context) -> str:
 				break
 
 		if not token_limit_exceeded:
-			stuff_summarization_service = StuffService(llm=llm, docs=documents)
-			return await stuff_summarization_service.summarize()
+			stuff_summarization_service = StuffService(
+				llm=llm,
+				docs=documents,
+				previous_report=anonymized_previous_report,
+			)
+			result = await stuff_summarization_service.summarize()
+		else:
+			map_reduce_service = MapReduceSummarizationService(
+				llm=llm,
+				docs=documents,
+				max_tokens=max_allowed_tokens,
+				previous_report=anonymized_previous_report,
+			)
+			result = await map_reduce_service.summarize()
 
-		map_reduce_service = MapReduceSummarizationService(
-			llm=llm,
-			docs=documents,
-			max_tokens=max_allowed_tokens,
-		)
-		return await map_reduce_service.summarize()
+		# De-anonymize the LLM output so the final Google Doc
+		# contains actual names instead of placeholders.
+		return PIIAnonymizer.deanonymize(result, pii_anonymizer.mapping)
 
 	except ValidationError as e:
 		ctx.logger.error(f"Validation error for ModelMetadata: {e}")

@@ -86,7 +86,23 @@ class PIIAnonymizer:
 	``en_core_web_lg`` spaCy model) are replaced with their entity-type label,
 	e.g. ``<PERSON>``, ``<EMAIL_ADDRESS>``, so that LLM prompts never receive
 	raw personal information.
+
+	For reversible anonymization, use ``anonymize_with_mapping`` which assigns
+	unique numbered placeholders (e.g. ``<PERSON_1>``, ``<ORGANIZATION_2>``)
+	and tracks a mapping for later de-anonymization. Call it multiple times on
+	the same instance to maintain consistent placeholders across documents.
 	"""
+
+	def __init__(self):
+		"""Initialize PIIAnonymizer with empty mapping state."""
+		self._mapping: dict[str, str] = {}
+		self._reverse_lookup: dict[str, str] = {}
+		self._counters: dict[str, int] = {}
+
+	@property
+	def mapping(self) -> dict[str, str]:
+		"""Return a copy of the current placeholder-to-original mapping."""
+		return dict(self._mapping)
 
 	def anonymize(self, text: str) -> str:
 		"""Anonymize PII in the given text.
@@ -151,3 +167,83 @@ class PIIAnonymizer:
 			return text
 
 		return sanitized_text
+
+	def anonymize_with_mapping(self, text: str) -> str:
+		"""Anonymize PII with unique numbered placeholders for reversibility.
+
+		Uses numbered placeholders like ``<PERSON_1>``, ``<ORGANIZATION_2>``
+		instead of generic ``<ENTITY_TYPE>`` tags. Tracks a mapping so that
+		``deanonymize`` can restore original values.
+
+		Call this method multiple times on the same instance to maintain
+		consistent placeholders across documents (same original value always
+		gets the same placeholder).
+
+		Args:
+			text: Input text that may contain PII.
+
+		Returns:
+			Text with PII replaced by unique numbered placeholders.
+			Returns the original text unchanged if blank, no PII is found,
+			or if analysis fails.
+
+		Raises:
+			TypeError: If text is not a string.
+
+		"""
+		validate(text, str)
+
+		if not text.strip():
+			return text
+
+		try:
+			analyzer, _ = _get_engines()
+		except RuntimeError:
+			_logger.warning(
+				"PII anonymizer engines unavailable; returning text unchanged",
+			)
+			return text
+
+		try:
+			results = analyzer.analyze(text=text, language="en")
+		except Exception as e:
+			_logger.warning("PII analyzer failed: %s; returning text unchanged", e)
+			return text
+
+		if not results:
+			return text
+
+		# Sort by start position descending so replacements don't shift indices
+		sorted_results = sorted(results, key=lambda r: r.start, reverse=True)
+
+		for result in sorted_results:
+			original = text[result.start : result.end]
+
+			if original in self._reverse_lookup:
+				placeholder = self._reverse_lookup[original]
+			else:
+				entity_type = result.entity_type
+				self._counters[entity_type] = self._counters.get(entity_type, 0) + 1
+				placeholder = f"<{entity_type}_{self._counters[entity_type]}>"
+				self._reverse_lookup[original] = placeholder
+				self._mapping[placeholder] = original
+
+			text = text[: result.start] + placeholder + text[result.end :]
+
+		return text
+
+	@staticmethod
+	def deanonymize(text: str, mapping: dict[str, str]) -> str:
+		"""Restore original values from numbered placeholders.
+
+		Args:
+			text: Anonymized text containing numbered placeholders.
+			mapping: Placeholder-to-original mapping from ``mapping`` property.
+
+		Returns:
+			Text with placeholders replaced by original values.
+
+		"""
+		for placeholder, original in mapping.items():
+			text = text.replace(placeholder, original)
+		return text

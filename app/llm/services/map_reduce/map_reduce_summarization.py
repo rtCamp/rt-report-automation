@@ -149,14 +149,6 @@ class MapReduceSummarizationService:
 			doc.page_content for doc in state["collapsed_summaries"]
 		)
 
-		# Inject previous report for continuity context in the final summary
-		if self.previous_report:
-			combined_summaries = (
-				f"{combined_summaries}\n\n"
-				f"--- PREVIOUS REPORT (for reference only) ---\n"
-				f"{self.previous_report}"
-			)
-
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
 
 		prompt = get_langfuse_prompt(
@@ -171,7 +163,14 @@ class MapReduceSummarizationService:
 
 		prompt_str = prompt.to_string()
 		if self.previous_report:
-			prompt_str = f"{prompt_str}\n{PREVIOUS_REPORT_INSTRUCTION}"
+			# Prepend instruction so LLM sees it first, then append the
+			# previous report as clearly separated reference context.
+			prompt_str = (
+				f"{PREVIOUS_REPORT_INSTRUCTION}\n"
+				f"{prompt_str}\n\n"
+				f"--- PREVIOUS REPORT (for reference only) ---\n"
+				f"{self.previous_report}"
+			)
 
 		response = await traced_llm_ainvoke(self.llm, prompt_str)
 

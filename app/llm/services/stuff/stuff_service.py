@@ -48,21 +48,17 @@ class StuffService:
 
 		langfuse_prompt = langfuse.get_prompt(self.prompt_slug)
 
-		# Append previous report instruction to the prompt template if applicable
 		prompt_template = langfuse_prompt.get_langchain_prompt(format=FORMAT)
 		if self.previous_report:
-			prompt_template = f"{prompt_template}\n{PREVIOUS_REPORT_INSTRUCTION}"
+			# Prepend instruction so the LLM sees it before the main task
+			prompt_template = (
+				f"{PREVIOUS_REPORT_INSTRUCTION}\n"
+				f"{prompt_template}\n\n"
+				f"--- PREVIOUS REPORT (for reference only) ---\n"
+				f"{{previous_report}}"
+			)
 
 		prompt = PromptTemplate.from_template(prompt_template)
-
-		# Inject previous report context if available
-		if self.previous_report:
-			for doc in self.docs:
-				doc.page_content = (
-					f"{doc.page_content}\n\n"
-					f"--- PREVIOUS REPORT (for reference only) ---\n"
-					f"{self.previous_report}"
-				)
 
 		chain = create_stuff_documents_chain(
 			llm=self.llm,
@@ -70,12 +66,14 @@ class StuffService:
 			prompt=prompt,
 		)
 
-		result = await traced_chain_ainvoke(
-			chain,
-			{
-				"context": self.docs,
-				"format_instructions": pydantic_parser.get_format_instructions(),
-			},
-		)
+		invoke_params: dict = {
+			"context": self.docs,
+			"format_instructions": pydantic_parser.get_format_instructions(),
+		}
+
+		if self.previous_report:
+			invoke_params["previous_report"] = self.previous_report
+
+		result = await traced_chain_ainvoke(chain, invoke_params)
 
 		return result.model_dump_json()
