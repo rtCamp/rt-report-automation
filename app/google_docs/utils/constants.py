@@ -8,6 +8,8 @@ TAG_SUFFIX = "-rtai"
 MAX_REPLACEMENT_ENTRIES = 100  # Maximum number of replacement key-value pairs
 MIN_FOLDER_ID_LENGTH = 8  # Minimum length for valid Google Drive folder IDs
 MAX_FOLDER_ID_LENGTH = 255  # Maximum length to prevent ReDoS attacks
+MIN_DOC_ID_LENGTH = 8  # Minimum length for valid Google Docs document IDs
+MAX_DOC_ID_LENGTH = 255  # Maximum length to prevent ReDoS attacks
 
 # Folder management
 DEFAULT_MAX_RECURSION_DEPTH = 10  # Maximum depth for recursive folder search

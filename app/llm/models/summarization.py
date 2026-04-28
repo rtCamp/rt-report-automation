@@ -155,6 +155,13 @@ class SummarizeRequest(BaseModel):
 	user_metadata: UserMetadata
 	github_metadata: GitHubMetadata
 	slack_metadata: SlackMetadata
+	previous_doc_url: str | None = Field(
+		default=None,
+		description="Optional Google Doc URL of the previous report for continuity",
+		examples=[
+			"https://docs.google.com/document/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ/edit",
+		],
+	)
 
 
 class SummarizeResponse(BaseModel):

@@ -11,3 +11,12 @@ FORMAT = """
     }}
 }}
 """  # noqa: E501 -- JSON schema that defines the expected structure of the output.
+
+PREVIOUS_REPORT_INSTRUCTION = """
+If a section titled "PREVIOUS REPORT (for reference only)" is present in the data:
+- Do NOT repeat or copy content from the previous report.
+- Use it only to highlight changes, continuity, or resolution of previously reported blockers.
+- Note when tasks have moved from "in-progress" to "completed" since the last report.
+- If a previously reported blocker is now resolved, mention this briefly.
+- If no previous report is present, ignore this instruction entirely.
+"""  # noqa: E501 -- LLM prompt text; line breaks would alter the prompt.

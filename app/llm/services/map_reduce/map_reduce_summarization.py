@@ -20,6 +20,7 @@ from app.core.adapters.langfuse import (
 )
 from app.llm.models.summarization import ProjectSummarySchema
 from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
+from app.llm.prompts import PREVIOUS_REPORT_INSTRUCTION
 from app.llm.prompts.helper import get_langfuse_prompt
 from app.llm.services.map_reduce.states import OverallState, SummaryState
 
@@ -32,11 +33,13 @@ class MapReduceSummarizationService:
 		llm: BaseChatModel,
 		docs: list[Document],
 		max_tokens: int,
+		previous_report: str | None = None,
 	) -> None:
 		"""Initialize the service."""
 		self.llm = llm
 		self.docs = docs
 		self.max_tokens = max_tokens
+		self.previous_report = previous_report
 
 	@observe()
 	def length_function(
@@ -145,6 +148,15 @@ class MapReduceSummarizationService:
 		combined_summaries = "\n\n".join(
 			doc.page_content for doc in state["collapsed_summaries"]
 		)
+
+		# Inject previous report for continuity context in the final summary
+		if self.previous_report:
+			combined_summaries = (
+				f"{combined_summaries}\n\n"
+				f"--- PREVIOUS REPORT (for reference only) ---\n"
+				f"{self.previous_report}"
+			)
+
 		pydantic_parser = PydanticOutputParser(pydantic_object=ProjectSummarySchema)
 
 		prompt = get_langfuse_prompt(
@@ -157,7 +169,11 @@ class MapReduceSummarizationService:
 			},
 		)
 
-		response = await traced_llm_ainvoke(self.llm, prompt.to_string())
+		prompt_str = prompt.to_string()
+		if self.previous_report:
+			prompt_str = f"{prompt_str}\n{PREVIOUS_REPORT_INSTRUCTION}"
+
+		response = await traced_llm_ainvoke(self.llm, prompt_str)
 
 		if not isinstance(response.content, str):
 			return {"final_summary": "Error: Unable to parse summary."}

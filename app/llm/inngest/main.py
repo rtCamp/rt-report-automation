@@ -6,7 +6,7 @@ import inngest
 
 from app.core.adapters import inngest_client
 from app.github.inngest import fetch_github_issues
-from app.google_docs.inngest import generate_google_doc
+from app.google_docs.inngest import fetch_previous_report, generate_google_doc
 from app.llm.inngest.summarization import summarization
 from app.slack.inngest import fetch_slack
 
@@ -19,11 +19,13 @@ from app.slack.inngest import fetch_slack
 async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 	"""Inngest workflow function to fetch Slack and GitHub data to generate summaries.
 
-	Orchestrates a four-step workflow:
+	Orchestrates a multi-step workflow:
 	1. Fetches standup messages from Slack using the fetch_slack function
 	2. Fetches GitHub issues using the fetch_github_issues function
-	3. Summarizes the fetched data using LLM-based summarization (waits for completion)
-	4. Generates a Google Doc from the summary (waits for completion)
+	3. Optionally fetches previous report content as Markdown
+		(steps 1-3 run in parallel)
+	4. Summarizes the fetched data using LLM-based summarization (waits for completion)
+	5. Generates a Google Doc from the summary (waits for completion)
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing SummarizeRequest data:
@@ -32,6 +34,7 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 			- user_metadata (UserMetadata): User information
 			- github_metadata (GitHubMetadata): GitHub repository details
 			- slack_metadata (SlackMetadata): Slack configuration with channel_slug
+			- previous_doc_url (str | None): Optional URL of the previous report
 
 	Returns:
 		dict[str, str]: Dictionary containing the generated Google Doc URL.
@@ -41,7 +44,7 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 		Exception: Any errors from the fetch_slack, summarization, or Google Docs steps.
 
 	"""
-	(slack_data, github_issues_data) = await ctx.group.parallel(
+	(slack_data, github_issues_data, previous_report_md) = await ctx.group.parallel(
 		(
 			lambda: ctx.step.invoke(
 				"fetch_slack",
@@ -53,6 +56,11 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 				function=fetch_github_issues,
 				data=ctx.event.data,
 			),
+			lambda: ctx.step.invoke(
+				"fetch_previous_report",
+				function=fetch_previous_report,
+				data=ctx.event.data,
+			),
 		),
 	)
 
@@ -60,8 +68,9 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 	# Prepare data for the summarization step
 	data = dict(ctx.event.data)
 	data["data"] = [slack_data, github_issues_data]
+	data["previous_report"] = previous_report_md
 
-	# Step 3: Generate summary using LLM
+	# Step 4: Generate summary using LLM
 	summary_json = await ctx.step.invoke(
 		"summarization",
 		function=summarization,
