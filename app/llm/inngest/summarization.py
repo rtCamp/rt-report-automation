@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import json
 
 import inngest
 from langchain.chat_models import init_chat_model
@@ -32,7 +33,7 @@ from app.llm.services import MapReduceSummarizationService, StuffService
 	),
 )
 @observe(name="summarization_workflow")
-async def summarization(ctx: inngest.Context) -> str:
+async def summarization(ctx: inngest.Context) -> str | dict | list:
 	"""Inngest function to perform map-reduce style summarization.
 
 	Args:
@@ -75,7 +76,7 @@ async def summarization(ctx: inngest.Context) -> str:
 				pii_anonymizer.anonymize_with_mapping(doc) for doc in validated_docs
 			]
 			anonymized_prev = (
-				pii_anonymizer.anonymize_with_mapping(previous_report)
+				pii_anonymizer.anonymize_with_mapping(str(previous_report))
 				if previous_report
 				else None
 			)
@@ -133,9 +134,14 @@ async def summarization(ctx: inngest.Context) -> str:
 			)
 			result = await map_reduce_service.summarize()
 
-		# De-anonymize the LLM output so the final Google Doc
-		# contains actual names instead of placeholders.
-		return PIIAnonymizer.deanonymize(result, pii_anonymizer.mapping)
+		# Parse the JSON result first, then de-anonymize on the parsed
+		# data structure to avoid injecting unescaped characters into raw
+		# JSON text (e.g. quotes or backslashes in original PII values).
+		try:
+			parsed = json.loads(result)
+		except (json.JSONDecodeError, TypeError):
+			parsed = result
+		return PIIAnonymizer.deanonymize(parsed, pii_anonymizer.mapping)
 
 	except ValidationError as e:
 		ctx.logger.error(f"Validation error for ModelMetadata: {e}")

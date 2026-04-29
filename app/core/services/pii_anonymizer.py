@@ -233,17 +233,38 @@ class PIIAnonymizer:
 		return text
 
 	@staticmethod
-	def deanonymize(text: str, mapping: dict[str, str]) -> str:
+	def deanonymize(
+		data: str | dict | list,
+		mapping: dict[str, str],
+	) -> str | dict | list:
 		"""Restore original values from numbered placeholders.
 
+		Accepts a string, dict, or list and recursively replaces all
+		placeholders found in string values.  Operating on a parsed data
+		structure (rather than raw JSON text) avoids the risk of injecting
+		unescaped characters that would break JSON serialization.
+
 		Args:
-			text: Anonymized text containing numbered placeholders.
+			data: Anonymized data — a string, dict, or list.
 			mapping: Placeholder-to-original mapping from ``mapping`` property.
 
 		Returns:
-			Text with placeholders replaced by original values.
+			Data with placeholders replaced by original values.
 
 		"""
-		for placeholder, original in mapping.items():
-			text = text.replace(placeholder, original)
-		return text
+		if isinstance(data, dict):
+			return {
+				key: PIIAnonymizer.deanonymize(value, mapping)
+				for key, value in data.items()
+			}
+		if isinstance(data, list):
+			return [PIIAnonymizer.deanonymize(item, mapping) for item in data]
+		if isinstance(data, str):
+			# Sort by placeholder length descending to prevent prefix collisions
+			# (e.g., <PERSON_1> matching inside <PERSON_10>).
+			for placeholder, original in sorted(
+				mapping.items(), key=lambda item: len(item[0]), reverse=True
+			):
+				data = data.replace(placeholder, original)
+			return data
+		return data
