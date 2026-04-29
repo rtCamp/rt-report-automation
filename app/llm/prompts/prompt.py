@@ -14,7 +14,7 @@ FORMAT = """
 
 PREVIOUS_REPORT_INSTRUCTION = """
 IMPORTANT — PREVIOUS REPORT CONTEXT:
-A previous report is provided below under the variable {{previous_report}}.
+A previous report is provided below for reference.
 You MUST use it to:
 - Highlight tasks that moved from "in-progress" to "completed" since the last report.
 - Note any previously reported blockers or risks that are now resolved.
