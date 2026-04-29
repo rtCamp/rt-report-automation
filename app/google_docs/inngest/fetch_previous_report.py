@@ -34,7 +34,7 @@ async def fetch_previous_report(ctx: inngest.Context) -> str | None:
 	"""
 	previous_doc_url = ctx.event.data.get("previous_doc_url")
 
-	if not previous_doc_url:
+	if not previous_doc_url or not isinstance(previous_doc_url, str):
 		return None
 
 	doc_fetcher = DocFetcherService()

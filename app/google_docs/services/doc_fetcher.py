@@ -1,6 +1,7 @@
 """Service for fetching Google Doc content as Markdown."""
 
 import logging
+from typing import Any
 
 import html2text
 
@@ -37,7 +38,7 @@ class DocFetcherService:
 		"""
 		doc_id = extract_doc_id_from_url(doc_url)
 
-		drive_service = self.auth_service.get_drive_service()
+		drive_service: Any = self.auth_service.get_drive_service()
 
 		try:
 			html_content = (
