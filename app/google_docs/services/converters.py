@@ -157,8 +157,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 			)
 		elif child.type == "softbreak":
 			runs.append(StyledRun(text="\n"))
-		elif child.type == "code_inline":
-			runs.append(StyledRun(text=child.content, code=True))
 		elif child.type == "strong_open":
 			bold = True
 		elif child.type == "strong_close":
