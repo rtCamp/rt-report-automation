@@ -18,8 +18,6 @@ class StyledRun:
 	text: str
 	bold: bool = False
 	italic: bool = False
-	strikethrough: bool = False
-	code: bool = False  # monospace / inline code
 	link: str | None = None
 
 
@@ -44,7 +42,7 @@ def markdown_to_blocks(md_text: str) -> list[DocBlock]:
 		Ordered list of DocBlock objects representing the parsed content.
 
 	"""
-	md = MarkdownIt("commonmark", {"typographer": True})
+	md = MarkdownIt("commonmark", {"typographer": False})
 	tokens = md.parse(md_text)
 	blocks: list[DocBlock] = []
 	_walk_tokens(tokens, blocks)
@@ -145,8 +143,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 	runs: list[StyledRun] = []
 	bold = False
 	italic = False
-	strikethrough = False
-	code = False
 	link: str | None = None
 
 	for child in children:
@@ -156,8 +152,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 					text=child.content,
 					bold=bold,
 					italic=italic,
-					strikethrough=strikethrough,
-					code=code,
 					link=link,
 				),
 			)
@@ -173,10 +167,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 			italic = True
 		elif child.type == "em_close":
 			italic = False
-		elif child.type == "s_open":
-			strikethrough = True
-		elif child.type == "s_close":
-			strikethrough = False
 		elif child.type == "link_open":
 			link = child.attrGet("href")
 		elif child.type == "link_close":
@@ -294,18 +284,6 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 				bold = force_bold if force_bold is not None else run.bold
 				style: dict = {"bold": bold, "italic": run.italic}
 				fields: list[str] = ["bold", "italic"]
-				if run.strikethrough:
-					style["strikethrough"] = True
-					fields.append("strikethrough")
-				if run.code:
-					style["weightedFontFamily"] = {"fontFamily": "Courier New"}
-					fields.append("weightedFontFamily")
-					style["backgroundColor"] = {
-						"color": {
-							"rgbColor": {"red": 0.95, "green": 0.95, "blue": 0.95},
-						},
-					}
-					fields.append("backgroundColor")
 				if run.link:
 					style["link"] = {"url": run.link}
 					fields.append("link")
