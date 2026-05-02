@@ -44,25 +44,44 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 		Exception: Any errors from the fetch_slack, summarization, or Google Docs steps.
 
 	"""
-	(slack_data, github_issues_data, previous_report_md) = await ctx.group.parallel(
-		(
-			lambda: ctx.step.invoke(
-				"fetch_slack",
-				function=fetch_slack,
-				data=ctx.event.data,
+	previous_doc_url = ctx.event.data.get("previous_doc_url")
+
+	if previous_doc_url:
+		(slack_data, github_issues_data, previous_report_md) = await ctx.group.parallel(
+			(
+				lambda: ctx.step.invoke(
+					"fetch_slack",
+					function=fetch_slack,
+					data=ctx.event.data,
+				),
+				lambda: ctx.step.invoke(
+					"fetch_github_issues",
+					function=fetch_github_issues,
+					data=ctx.event.data,
+				),
+				lambda: ctx.step.invoke(
+					"fetch_previous_report",
+					function=fetch_previous_report,
+					data=ctx.event.data,
+				),
 			),
-			lambda: ctx.step.invoke(
-				"fetch_github_issues",
-				function=fetch_github_issues,
-				data=ctx.event.data,
+		)
+	else:
+		(slack_data, github_issues_data) = await ctx.group.parallel(
+			(
+				lambda: ctx.step.invoke(
+					"fetch_slack",
+					function=fetch_slack,
+					data=ctx.event.data,
+				),
+				lambda: ctx.step.invoke(
+					"fetch_github_issues",
+					function=fetch_github_issues,
+					data=ctx.event.data,
+				),
 			),
-			lambda: ctx.step.invoke(
-				"fetch_previous_report",
-				function=fetch_previous_report,
-				data=ctx.event.data,
-			),
-		),
-	)
+		)
+		previous_report_md = None
 
 	# Both slack_data and github_issues_data are already TOON strings
 	# Prepare data for the summarization step
