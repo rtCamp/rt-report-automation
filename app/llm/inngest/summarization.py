@@ -88,6 +88,11 @@ async def summarization(ctx: inngest.Context) -> str | dict | list:
 		)
 
 		sanitized_docs = [sanitize_prompt(content) for content in anonymized_docs]
+		sanitized_previous_report = (
+			sanitize_prompt(anonymized_previous_report)
+			if anonymized_previous_report
+			else None
+		)
 
 		llm_model_overrides = ModelMetadata.model_validate(llm_model_data)
 
@@ -122,7 +127,7 @@ async def summarization(ctx: inngest.Context) -> str | dict | list:
 			stuff_summarization_service = StuffService(
 				llm=llm,
 				docs=documents,
-				previous_report=anonymized_previous_report,
+				previous_report=sanitized_previous_report,
 			)
 			result = await stuff_summarization_service.summarize()
 		else:
@@ -130,7 +135,7 @@ async def summarization(ctx: inngest.Context) -> str | dict | list:
 				llm=llm,
 				docs=documents,
 				max_tokens=max_allowed_tokens,
-				previous_report=anonymized_previous_report,
+				previous_report=sanitized_previous_report,
 			)
 			result = await map_reduce_service.summarize()
 
