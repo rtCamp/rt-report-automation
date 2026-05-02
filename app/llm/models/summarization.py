@@ -147,6 +147,16 @@ class ModelMetadata(BaseModel):
 	)
 
 
+class HoursBreakdownItem(BaseModel):
+	"""A single task entry for the hours breakdown table in the generated report."""
+
+	task_title: str = Field(..., description="Task or epic name", min_length=1)
+	estimated_hours: float = Field(
+		..., description="Hours estimated for the task", ge=0
+	)
+	hours_consumed: float = Field(..., description="Actual hours consumed", ge=0)
+
+
 class SummarizeRequest(BaseModel):
 	"""Request schema for LLM-based summarization."""
 
@@ -160,6 +170,23 @@ class SummarizeRequest(BaseModel):
 		description="Optional Google Doc URL of the previous report for continuity",
 		examples=[
 			"https://docs.google.com/document/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ/edit",
+		],
+	)
+	hours_breakdown: list[HoursBreakdownItem] | None = Field(
+		default=None,
+		description=(
+			"Optional list of task hours entries. When provided, the hours breakdown "
+			"table in the generated report is populated with one row per task."
+		),
+		examples=[
+			[
+				{"task_title": "Meetings", "estimated_hours": 8, "hours_consumed": 6.5},
+				{
+					"task_title": "Feature Development",
+					"estimated_hours": 40,
+					"hours_consumed": 35,
+				},
+			]
 		],
 	)
 

@@ -4,6 +4,7 @@ import logging
 
 from app.core.utils import log_and_raise
 from app.google_docs.services.doc_generator import DocGeneratorService
+from app.llm.models.summarization import HoursBreakdownItem
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class GoogleDocsService:
 		replacements: dict[str, str | list[str]] | None,
 		doc_name: str,
 		parent_folder_id: str,
+		hours_breakdown: list[HoursBreakdownItem] | None = None,
 	) -> dict[str, str]:
 		"""Generate a Google Doc from template with replacements.
 
@@ -57,6 +59,7 @@ class GoogleDocsService:
 			replacements=replacements,
 			output_name=doc_name,
 			parent_folder_id=parent_folder_id,
+			hours_breakdown=hours_breakdown,
 		)
 
 		return {"document_url": document_url}

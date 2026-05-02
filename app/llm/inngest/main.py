@@ -88,6 +88,7 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 		"summary_json": summary_data,
 		"project_metadata": ctx.event.data.get("project_metadata"),
 		"user_metadata": ctx.event.data.get("user_metadata"),
+		"hours_breakdown": ctx.event.data.get("hours_breakdown"),
 	}
 
 	return await ctx.step.invoke(

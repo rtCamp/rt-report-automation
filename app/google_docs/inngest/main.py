@@ -13,6 +13,7 @@ from app.google_docs.inngest.utils import (
 	build_replacements_dict,
 	generate_doc_name,
 )
+from app.google_docs.models.models import HoursBreakdownItem
 from app.google_docs.utils.helpers import extract_folder_id_from_drive_link
 from app.llm.models.summarization import (
 	ProjectMetadata,
@@ -76,6 +77,14 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 			user_metadata=user_metadata,
 		)
 
+		# Parse optional hours breakdown
+		raw_hours = event_data.get("hours_breakdown")
+		hours_breakdown = (
+			[HoursBreakdownItem.model_validate(item) for item in raw_hours]
+			if isinstance(raw_hours, list)
+			else None
+		)
+
 		# Generate document name
 		doc_name = generate_doc_name(
 			project_name=project_metadata.project_name,
@@ -96,6 +105,7 @@ async def generate_google_doc(ctx: inngest.Context) -> dict[str, str]:
 			replacements=replacements,
 			doc_name=doc_name,
 			parent_folder_id=folder_id,
+			hours_breakdown=hours_breakdown,
 		)
 
 	except ValidationError as e:
