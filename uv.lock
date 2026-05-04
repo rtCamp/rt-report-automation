@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -508,6 +508,7 @@ dependencies = [
     { name = "langchain-google-genai" },
     { name = "langfuse" },
     { name = "langgraph" },
+    { name = "markdown-it-py" },
     { name = "pre-commit" },
     { name = "presidio-analyzer" },
     { name = "presidio-anonymizer" },
@@ -545,6 +546,7 @@ requires-dist = [
     { name = "langchain-google-genai", specifier = ">=2.1.10" },
     { name = "langfuse", specifier = ">=3.3.4" },
     { name = "langgraph", specifier = ">=0.6.6" },
+    { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "pre-commit", specifier = ">=4.3.0" },
     { name = "presidio-analyzer", specifier = ">=2.2.362" },
     { name = "presidio-anonymizer", specifier = ">=2.2.362" },
