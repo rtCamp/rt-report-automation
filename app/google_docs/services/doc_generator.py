@@ -28,9 +28,6 @@ def _task_section_to_md(raw: str) -> str:
 	sub-items.  This function converts each line to a ``- `` prefixed markdown
 	list item at the appropriate indent depth (4 spaces per tab level).
 
-	Title lines may contain markdown hyperlinks in ``[text](url)`` format which
-	are preserved verbatim and rendered as clickable links by markdown-it-py.
-
 	Args:
 		raw: Tab-indented task string from the LLM.
 

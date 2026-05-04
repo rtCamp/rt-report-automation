@@ -18,12 +18,11 @@ class StyledRun:
 	text: str
 	bold: bool = False
 	italic: bool = False
-	link: str | None = None
 
 
 @dataclass
 class DocBlock:
-	"""A paragraph-level block: heading, paragraph, list item, code block, etc."""
+	"""A paragraph-level block: heading, paragraph, list item etc."""
 
 	runs: list[StyledRun] = field(default_factory=list)
 	heading_level: int | None = None
@@ -143,7 +142,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 	runs: list[StyledRun] = []
 	bold = False
 	italic = False
-	link: str | None = None
 
 	for child in children:
 		if child.type == "text":
@@ -152,7 +150,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 					text=child.content,
 					bold=bold,
 					italic=italic,
-					link=link,
 				),
 			)
 		elif child.type == "softbreak":
@@ -165,10 +162,6 @@ def _inline_to_runs(children: list) -> list[StyledRun]:
 			italic = True
 		elif child.type == "em_close":
 			italic = False
-		elif child.type == "link_open":
-			link = child.attrGet("href")
-		elif child.type == "link_close":
-			link = None
 
 	return runs or [StyledRun(text="")]
 
@@ -233,8 +226,8 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 
 	For each block the request sequence is:
 	1. ``insertText``
-	2. ``updateTextStyle`` (bold, italic, code, link, etc.)
-	3. ``updateParagraphStyle`` (heading named style / code shading)
+	2. ``updateTextStyle`` (bold, italic, etc.)
+	3. ``updateParagraphStyle`` (heading named style)
 	4. ``createParagraphBullets`` (bullet / ordered list)
 
 	Args:
@@ -282,9 +275,6 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 				bold = force_bold if force_bold is not None else run.bold
 				style: dict = {"bold": bold, "italic": run.italic}
 				fields: list[str] = ["bold", "italic"]
-				if run.link:
-					style["link"] = {"url": run.link}
-					fields.append("link")
 				reqs.append(
 					{
 						"updateTextStyle": {
@@ -381,7 +371,7 @@ def _build_markdown_insert_requests(md_text: str, start_index: int) -> list[dict
 			i = grp_start - 1
 			continue
 
-		# ── Paragraphs, headings, code blocks ────────────────────────────────
+		# ── Paragraphs, headings blocks ────────────────────────────────
 		para_text = "".join(r.text for r in block.runs) + "\n"
 		requests.append(
 			{"insertText": {"location": {"index": start_index}, "text": para_text}},
