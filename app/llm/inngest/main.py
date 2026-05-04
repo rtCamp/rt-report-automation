@@ -1,8 +1,15 @@
 """Inngest workflow for LLM-based summarization."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 import inngest
+
+if TYPE_CHECKING:
+	from collections.abc import Callable, Coroutine
+	from typing import Any
 
 from app.core.adapters import inngest_client
 from app.github.inngest import fetch_github_issues
@@ -44,25 +51,33 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 		Exception: Any errors from the fetch_slack, summarization, or Google Docs steps.
 
 	"""
-	(slack_data, github_issues_data, previous_report_md) = await ctx.group.parallel(
-		(
-			lambda: ctx.step.invoke(
-				"fetch_slack",
-				function=fetch_slack,
-				data=ctx.event.data,
-			),
-			lambda: ctx.step.invoke(
-				"fetch_github_issues",
-				function=fetch_github_issues,
-				data=ctx.event.data,
-			),
+	previous_doc_url = ctx.event.data.get("previous_doc_url")
+
+	steps: list[Callable[[], Coroutine[Any, Any, str | None]]] = [
+		lambda: ctx.step.invoke(
+			"fetch_slack",
+			function=fetch_slack,
+			data=ctx.event.data,
+		),
+		lambda: ctx.step.invoke(
+			"fetch_github_issues",
+			function=fetch_github_issues,
+			data=ctx.event.data,
+		),
+	]
+
+	if previous_doc_url:
+		steps.append(
 			lambda: ctx.step.invoke(
 				"fetch_previous_report",
 				function=fetch_previous_report,
 				data=ctx.event.data,
 			),
-		),
-	)
+		)
+
+	result = await ctx.group.parallel(tuple(steps))
+	slack_data, github_issues_data = result[0], result[1]
+	previous_report_md = result[2] if previous_doc_url else None
 
 	# Both slack_data and github_issues_data are already TOON strings
 	# Prepare data for the summarization step
