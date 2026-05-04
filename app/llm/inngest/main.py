@@ -1,8 +1,15 @@
 """Inngest workflow for LLM-based summarization."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 import inngest
+
+if TYPE_CHECKING:
+	from collections.abc import Callable, Coroutine
+	from typing import Any
 
 from app.core.adapters import inngest_client
 from app.github.inngest import fetch_github_issues
@@ -46,7 +53,7 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 	"""
 	previous_doc_url = ctx.event.data.get("previous_doc_url")
 
-	steps = [
+	steps: list[Callable[[], Coroutine[Any, Any, str | None]]] = [
 		lambda: ctx.step.invoke(
 			"fetch_slack",
 			function=fetch_slack,
@@ -60,7 +67,7 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 	]
 
 	if previous_doc_url:
-		steps.append(  # type: ignore[arg-type]
+		steps.append(
 			lambda: ctx.step.invoke(
 				"fetch_previous_report",
 				function=fetch_previous_report,
