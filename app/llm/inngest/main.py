@@ -60,7 +60,7 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 	]
 
 	if previous_doc_url:
-		steps.append(
+		steps.append(  # type: ignore[arg-type]
 			lambda: ctx.step.invoke(
 				"fetch_previous_report",
 				function=fetch_previous_report,
