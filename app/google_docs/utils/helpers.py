@@ -5,7 +5,9 @@ import re
 
 from app.core.utils import log_and_raise
 from app.google_docs.utils.constants import (
+	MAX_DOC_ID_LENGTH,
 	MAX_FOLDER_ID_LENGTH,
+	MIN_DOC_ID_LENGTH,
 	MIN_FOLDER_ID_LENGTH,
 )
 
@@ -83,3 +85,53 @@ def extract_folder_id_from_drive_link(drive_link: str) -> str:
 		)
 
 	return drive_link
+
+
+# Regex patterns for Google Docs document ID extraction
+# Matches: /document/d/{document_id} in URLs (captures document ID)
+# Example: "https://docs.google.com/document/d/1aBcDeFgHiJkLmNoPqRsTuVwXyZ/edit"
+# -> captures "1aBcDeFgHiJkLmNoPqRsTuVwXyZ"
+DOC_URL_PATTERN = re.compile(
+	rf"/document/d/([a-zA-Z0-9_-]{{{MIN_DOC_ID_LENGTH},{MAX_DOC_ID_LENGTH}}})",
+)
+
+
+def extract_doc_id_from_url(doc_url: str) -> str:
+	"""Extract document ID from a Google Docs URL.
+
+	Supports various Google Docs URL formats:
+	- https://docs.google.com/document/d/{doc_id}/edit
+	- https://docs.google.com/document/d/{doc_id}
+
+	Args:
+		doc_url: Google Docs document URL.
+
+	Returns:
+		The extracted document ID.
+
+	Raises:
+		ValueError: If the URL format is invalid or document ID cannot be extracted.
+
+	Examples:
+		>>> extract_doc_id_from_url(
+		...     "https://docs.google.com/document/d/1aBcDeFgHiJk/edit"
+		... )
+		'1aBcDeFgHiJk'
+
+	"""
+	if not doc_url or not doc_url.strip():
+		log_and_raise(
+			logger,
+			"Document URL cannot be empty",
+		)
+
+	doc_url = doc_url.strip()
+
+	match: re.Match[str] | None = DOC_URL_PATTERN.search(doc_url)
+	if match:
+		return match.group(1)
+
+	return log_and_raise(
+		logger,
+		"Invalid Google Docs URL format",
+	)
