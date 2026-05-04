@@ -46,42 +46,31 @@ async def summarization_workflow(ctx: inngest.Context) -> dict[str, str]:
 	"""
 	previous_doc_url = ctx.event.data.get("previous_doc_url")
 
+	steps = [
+		lambda: ctx.step.invoke(
+			"fetch_slack",
+			function=fetch_slack,
+			data=ctx.event.data,
+		),
+		lambda: ctx.step.invoke(
+			"fetch_github_issues",
+			function=fetch_github_issues,
+			data=ctx.event.data,
+		),
+	]
+
 	if previous_doc_url:
-		(slack_data, github_issues_data, previous_report_md) = await ctx.group.parallel(
-			(
-				lambda: ctx.step.invoke(
-					"fetch_slack",
-					function=fetch_slack,
-					data=ctx.event.data,
-				),
-				lambda: ctx.step.invoke(
-					"fetch_github_issues",
-					function=fetch_github_issues,
-					data=ctx.event.data,
-				),
-				lambda: ctx.step.invoke(
-					"fetch_previous_report",
-					function=fetch_previous_report,
-					data=ctx.event.data,
-				),
+		steps.append(
+			lambda: ctx.step.invoke(
+				"fetch_previous_report",
+				function=fetch_previous_report,
+				data=ctx.event.data,
 			),
 		)
-	else:
-		(slack_data, github_issues_data) = await ctx.group.parallel(
-			(
-				lambda: ctx.step.invoke(
-					"fetch_slack",
-					function=fetch_slack,
-					data=ctx.event.data,
-				),
-				lambda: ctx.step.invoke(
-					"fetch_github_issues",
-					function=fetch_github_issues,
-					data=ctx.event.data,
-				),
-			),
-		)
-		previous_report_md = None
+
+	result = await ctx.group.parallel(tuple(steps))
+	slack_data, github_issues_data = result[0], result[1]
+	previous_report_md = result[2] if previous_doc_url else None
 
 	# Both slack_data and github_issues_data are already TOON strings
 	# Prepare data for the summarization step
