@@ -406,6 +406,23 @@ class DocGeneratorService:
 
 		cells = self._get_table_cells(doc, table_start)
 
+		# Validate table dimensions before indexing: need rows up through the
+		# last task row (placeholder_row + N), each with at least 2 columns
+		# (Task | Hours Consumed). A mismatch means the template structure is wrong.
+		min_required_rows = placeholder_row + len(hours_breakdown) + 1
+		actual_rows = len(cells)
+		actual_cols = min((len(row) for row in cells), default=0)
+
+		if actual_rows < min_required_rows or actual_cols < 2:
+			log_and_raise(
+				logger,
+				f"Hours breakdown table shape mismatch after row insertion — "
+				f"expected at least {min_required_rows} rows × 2 cols, "
+				f"got {actual_rows} rows × {actual_cols} cols. "
+				"Verify the template table has the correct structure "
+				"(header row, placeholder row, totals row, 2 columns).",
+			)
+
 		# Build fill ops (task rows only, descending index order)
 		fill_ops: list[tuple[int, str]] = []
 		for i, item in enumerate(hours_breakdown):
