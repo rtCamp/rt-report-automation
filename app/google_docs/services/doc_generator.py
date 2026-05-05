@@ -251,9 +251,9 @@ class DocGeneratorService:
 					e,
 				)
 
-		# Step 4: Insert hours breakdown table rows (if provided)
-		if hours_breakdown:
-			self._insert_hours_breakdown(docs_service, doc_id, hours_breakdown)
+		# Step 4: Insert hours breakdown table rows
+		# (empty list clears placeholder and zeros totals)
+		self._insert_hours_breakdown(docs_service, doc_id, hours_breakdown or [])
 
 		# Return the document URL
 		return f"https://docs.google.com/document/d/{doc_id}/edit"
@@ -271,17 +271,21 @@ class DocGeneratorService:
 			- Row 1: A cell containing {{{rtai-hoursBreakdown-rtai}}}
 			- Row 2: Totals row with {{{rtai-totalHoursConsumed-rtai}}}
 
+		When hours_breakdown is empty, the placeholder row is deleted and the
+		totalHoursConsumed placeholder is replaced with "0" in a single batch.
+
 		Steps:
 			1. Fetch the doc to find the placeholder cell location
-			2. Clear placeholder text
-			3. Insert N task rows below the placeholder row
-			4. Re-fetch to get fresh cell indices
-			5. Fill task rows + delete placeholder row + replace totals (single batch)
+			2. If empty: delete placeholder row + zero totals, return early
+			3. Clear placeholder text
+			4. Insert N task rows below the placeholder row
+			5. Re-fetch to get fresh cell indices
+			6. Fill task rows + delete placeholder row + replace totals (single batch)
 
 		Args:
 			docs_service: Authenticated Google Docs API service.
 			doc_id: The document ID to update.
-			hours_breakdown: List of task hours entries.
+			hours_breakdown: List of task hours entries (may be empty).
 
 		Raises:
 			Exception: If any API call fails or the placeholder is not found.
@@ -307,6 +311,43 @@ class DocGeneratorService:
 
 		table_start: int = location["table_start"]
 		placeholder_row: int = location["row_idx"]
+
+		# When no tasks provided: delete placeholder row & zero the totals in one batch
+		if not hours_breakdown:
+			try:
+				docs_service.documents().batchUpdate(
+					documentId=doc_id,
+					body={
+						"requests": [
+							{
+								"deleteTableRow": {
+									"tableCellLocation": {
+										"tableStartLocation": {"index": table_start},
+										"rowIndex": placeholder_row,
+										"columnIndex": 0,
+									}
+								}
+							},
+							{
+								"replaceAllText": {
+									"containsText": {
+										"text": get_template_tag("totalHoursConsumed"),
+										"matchCase": True,
+									},
+									"replaceText": "0",
+								}
+							},
+						]
+					},
+				).execute()
+			except Exception as e:
+				log_and_raise(
+					logger,
+					"Failed to clear hours breakdown table",
+					Exception,
+					e,
+				)
+			return
 
 		# Clear placeholder text
 		try:
