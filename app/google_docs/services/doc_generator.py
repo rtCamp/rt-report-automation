@@ -10,6 +10,7 @@ from app.google_docs.services.converters import build_replacement_requests
 from app.google_docs.services.folder_manager import FolderManagerService
 from app.google_docs.services.google_auth import GoogleAuthService
 from app.google_docs.utils.constants import get_template_tag
+from app.google_docs.utils.helpers import fmt_hours
 from app.llm.models.summarization import HoursBreakdownItem
 
 # Keys whose LLM output is already markdown (bold, italic, bullet lists, etc.).
@@ -251,7 +252,7 @@ class DocGeneratorService:
 					e,
 				)
 
-		# Step 4: Insert hours breakdown table rows
+		# Step 5: Insert hours breakdown table rows
 		# (empty list clears placeholder and zeros totals)
 		self._insert_hours_breakdown(docs_service, doc_id, hours_breakdown or [])
 
@@ -412,7 +413,7 @@ class DocGeneratorService:
 			for col, val in enumerate(
 				[
 					item.task_title,
-					str(item.hours_consumed),
+					fmt_hours(item.hours_consumed),
 				]
 			):
 				fill_ops.append((cells[row_idx][col] + 1, val))
@@ -422,6 +423,7 @@ class DocGeneratorService:
 		total_consumed = sum(item.hours_consumed for item in hours_breakdown)
 
 		# Single batch: fill task rows + delete placeholder row + replace totals
+		# fmt_hours rounds and strips trailing zeros for stable output
 		try:
 			docs_service.documents().batchUpdate(
 				documentId=doc_id,
@@ -446,7 +448,7 @@ class DocGeneratorService:
 									"text": get_template_tag("totalHoursConsumed"),
 									"matchCase": True,
 								},
-								"replaceText": str(total_consumed),
+								"replaceText": fmt_hours(total_consumed),
 							}
 						},
 					]
