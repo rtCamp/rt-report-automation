@@ -10,6 +10,8 @@ from app.google_docs.services.converters import build_replacement_requests
 from app.google_docs.services.folder_manager import FolderManagerService
 from app.google_docs.services.google_auth import GoogleAuthService
 from app.google_docs.utils.constants import get_template_tag
+from app.google_docs.utils.helpers import fmt_hours
+from app.llm.models.summarization import HoursBreakdownItem
 
 # Keys whose LLM output is already markdown (bold, italic, bullet lists, etc.).
 _MARKDOWN_KEYS: frozenset[str] = frozenset({"summary", "riskBlockerActionNeeded"})
@@ -141,6 +143,7 @@ class DocGeneratorService:
 		replacements: dict[str, str | list[str]],
 		output_name: str,
 		parent_folder_id: str,
+		hours_breakdown: list[HoursBreakdownItem] | None = None,
 	) -> str:
 		"""Create a Google Doc from a template with replacements.
 
@@ -149,6 +152,9 @@ class DocGeneratorService:
 			output_name: Name for the generated document.
 			parent_folder_id: Google Drive parent folder ID. The 'Automated Docs'
 				folder must already exist within this parent.
+			hours_breakdown: Optional list of task hours entries. When provided,
+				the placeholder row in the template table is replaced with one
+				row per task and a totals row.
 
 		Returns:
 			str: URL of the created document.
@@ -246,5 +252,265 @@ class DocGeneratorService:
 					e,
 				)
 
+		# Step 5: Insert hours breakdown table rows
+		# (empty list clears placeholder and zeros totals)
+		self._insert_hours_breakdown(docs_service, doc_id, hours_breakdown or [])
+
 		# Return the document URL
 		return f"https://docs.google.com/document/d/{doc_id}/edit"
+
+	def _insert_hours_breakdown(
+		self,
+		docs_service: Any,
+		doc_id: str,
+		hours_breakdown: list[HoursBreakdownItem],
+	) -> None:
+		"""Insert task rows into the hours breakdown table in the document.
+
+		Expects the template to contain a 2-column table with:
+			- Row 0: Bold column headers (pre-built in template)
+			- Row 1: A cell containing {{{rtai-hoursBreakdown-rtai}}}
+			- Row 2: Totals row with {{{rtai-totalHoursConsumed-rtai}}}
+
+		When hours_breakdown is empty, the placeholder row is deleted and the
+		totalHoursConsumed placeholder is replaced with "0" in a single batch.
+
+		Steps:
+			1. Fetch the doc to find the placeholder cell location
+			2. If empty: delete placeholder row + zero totals, return early
+			3. Clear placeholder text
+			4. Insert N task rows below the placeholder row
+			5. Re-fetch to get fresh cell indices
+			6. Fill task rows + delete placeholder row + replace totals (single batch)
+
+		Args:
+			docs_service: Authenticated Google Docs API service.
+			doc_id: The document ID to update.
+			hours_breakdown: List of task hours entries (may be empty).
+
+		Raises:
+			Exception: If any API call fails or the placeholder is not found.
+
+		"""
+		# Fetch document to locate placeholder
+		try:
+			doc = docs_service.documents().get(documentId=doc_id).execute()
+		except Exception as e:
+			log_and_raise(
+				logger, "Failed to fetch document for hours breakdown", Exception, e
+			)
+
+		location = self._find_placeholder_in_table(
+			doc, get_template_tag("hoursBreakdown")
+		)
+		if location is None:
+			logger.warning(
+				"Hours breakdown placeholder not found in document %s — skipping.",
+				doc_id,
+			)
+			return
+
+		table_start: int = location["table_start"]
+		placeholder_row: int = location["row_idx"]
+
+		# When no tasks provided: delete placeholder row & zero the totals in one batch
+		if not hours_breakdown:
+			try:
+				docs_service.documents().batchUpdate(
+					documentId=doc_id,
+					body={
+						"requests": [
+							{
+								"deleteTableRow": {
+									"tableCellLocation": {
+										"tableStartLocation": {"index": table_start},
+										"rowIndex": placeholder_row,
+										"columnIndex": 0,
+									}
+								}
+							},
+							{
+								"replaceAllText": {
+									"containsText": {
+										"text": get_template_tag("totalHoursConsumed"),
+										"matchCase": True,
+									},
+									"replaceText": "0",
+								}
+							},
+						]
+					},
+				).execute()
+			except Exception as e:
+				log_and_raise(
+					logger,
+					"Failed to clear hours breakdown table",
+					Exception,
+					e,
+				)
+			return
+
+		# Clear placeholder text
+		try:
+			docs_service.documents().batchUpdate(
+				documentId=doc_id,
+				body={
+					"requests": [
+						{
+							"replaceAllText": {
+								"containsText": {
+									"text": get_template_tag("hoursBreakdown"),
+									"matchCase": True,
+								},
+								"replaceText": "",
+							}
+						}
+					]
+				},
+			).execute()
+		except Exception as e:
+			log_and_raise(
+				logger, "Failed to clear hours breakdown placeholder", Exception, e
+			)
+
+		# Insert one row per task below the placeholder row
+		try:
+			docs_service.documents().batchUpdate(
+				documentId=doc_id,
+				body={
+					"requests": [
+						{
+							"insertTableRow": {
+								"tableCellLocation": {
+									"tableStartLocation": {"index": table_start},
+									"rowIndex": placeholder_row,
+									"columnIndex": 0,
+								},
+								"insertBelow": True,
+							}
+						}
+						for _ in hours_breakdown
+					]
+				},
+			).execute()
+		except Exception as e:
+			log_and_raise(logger, "Failed to insert hours breakdown rows", Exception, e)
+
+		# Re-fetch to get updated cell positions
+		try:
+			doc = docs_service.documents().get(documentId=doc_id).execute()
+		except Exception as e:
+			log_and_raise(
+				logger, "Failed to re-fetch document after row insertion", Exception, e
+			)
+
+		cells = self._get_table_cells(doc, table_start)
+
+		# Validate table dimensions before indexing: need rows up through the
+		# last task row (placeholder_row + N), each with at least 2 columns
+		# (Task | Hours Consumed). A mismatch means the template structure is wrong.
+		min_required_rows = placeholder_row + len(hours_breakdown) + 1
+		actual_rows = len(cells)
+		actual_cols = min((len(row) for row in cells), default=0)
+
+		if actual_rows < min_required_rows or actual_cols < 2:
+			log_and_raise(
+				logger,
+				f"Hours breakdown table shape mismatch after row insertion — "
+				f"expected at least {min_required_rows} rows × 2 cols, "
+				f"got {actual_rows} rows × {actual_cols} cols. "
+				"Verify the template table has the correct structure "
+				"(header row, placeholder row, totals row, 2 columns).",
+			)
+
+		# Build fill ops (task rows only, descending index order)
+		fill_ops: list[tuple[int, str]] = []
+		for i, item in enumerate(hours_breakdown):
+			row_idx = placeholder_row + 1 + i
+			for col, val in enumerate(
+				[
+					item.task_title,
+					fmt_hours(item.hours_consumed),
+				]
+			):
+				fill_ops.append((cells[row_idx][col] + 1, val))
+
+		fill_ops.sort(key=lambda x: x[0], reverse=True)
+
+		total_consumed = sum(item.hours_consumed for item in hours_breakdown)
+
+		# Single batch: fill task rows + delete placeholder row + replace totals
+		# fmt_hours rounds and strips trailing zeros for stable output
+		try:
+			docs_service.documents().batchUpdate(
+				documentId=doc_id,
+				body={
+					"requests": [
+						*(
+							{"insertText": {"location": {"index": idx}, "text": text}}
+							for idx, text in fill_ops
+						),
+						{
+							"deleteTableRow": {
+								"tableCellLocation": {
+									"tableStartLocation": {"index": table_start},
+									"rowIndex": placeholder_row,
+									"columnIndex": 0,
+								}
+							}
+						},
+						{
+							"replaceAllText": {
+								"containsText": {
+									"text": get_template_tag("totalHoursConsumed"),
+									"matchCase": True,
+								},
+								"replaceText": fmt_hours(total_consumed),
+							}
+						},
+					]
+				},
+			).execute()
+		except Exception as e:
+			log_and_raise(
+				logger, "Failed to populate hours breakdown table", Exception, e
+			)
+
+	@staticmethod
+	def _find_placeholder_in_table(document: dict, placeholder: str) -> dict | None:
+		"""Find a placeholder string inside a table cell.
+
+		Returns a dict with ``table_start`` and ``row_idx`` / ``col_idx``,
+		or None if not found.
+		"""
+		for element in document.get("body", {}).get("content", []):
+			table = element.get("table")
+			if not table:
+				continue
+			for row_idx, row in enumerate(table.get("tableRows", [])):
+				for col_idx, cell in enumerate(row.get("tableCells", [])):
+					for cell_content in cell.get("content", []):
+						para = cell_content.get("paragraph")
+						if not para:
+							continue
+						for text_elem in para.get("elements", []):
+							if placeholder in text_elem.get("textRun", {}).get(
+								"content", ""
+							):
+								return {
+									"table_start": element["startIndex"],
+									"row_idx": row_idx,
+									"col_idx": col_idx,
+								}
+		return None
+
+	@staticmethod
+	def _get_table_cells(document: dict, table_start: int) -> list[list[int]]:
+		"""Return a 2D list of cell startIndexes for the table at table_start."""
+		for element in document.get("body", {}).get("content", []):
+			if "table" in element and element["startIndex"] == table_start:
+				return [
+					[cell["startIndex"] for cell in row.get("tableCells", [])]
+					for row in element["table"].get("tableRows", [])
+				]
+		return []

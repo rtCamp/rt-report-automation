@@ -135,3 +135,20 @@ def extract_doc_id_from_url(doc_url: str) -> str:
 		logger,
 		"Invalid Google Docs URL format",
 	)
+
+
+def fmt_hours(value: float) -> str:
+	"""Format a hours value to a stable, human-friendly string.
+
+	Rounds to 2 decimal places to eliminate floating-point artifacts
+	(e.g. 0.30000000000000004), then strips trailing zeros so the result
+	is compact: 6.50 -> "6.5", 35.00 -> "35".
+
+	Args:
+		value: A non-negative float representing hours.
+
+	Returns:
+		A clean decimal string.
+
+	"""
+	return f"{round(value, 2):g}"

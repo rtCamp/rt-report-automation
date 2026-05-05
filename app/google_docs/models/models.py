@@ -6,6 +6,7 @@ from app.google_docs.utils.constants import (
 	MAX_REPLACEMENT_ENTRIES,
 	MIN_FOLDER_ID_LENGTH,
 )
+from app.llm.models.summarization import HoursBreakdownItem
 
 
 class GenerateDocRequest(BaseModel):
@@ -56,6 +57,21 @@ class GenerateDocRequest(BaseModel):
 		),
 		min_length=MIN_FOLDER_ID_LENGTH,
 		examples=["1iwxHw-G4am1lliSoftEZjzmIxV38P__4"],
+	)
+
+	hours_breakdown: list[HoursBreakdownItem] | None = Field(
+		default=None,
+		description=(
+			"Optional list of task hours entries. When provided, the "
+			"{{{rtai-hoursBreakdown-rtai}}} placeholder row in the template "
+			"table is replaced with one row per task plus a totals row."
+		),
+		examples=[
+			[
+				{"task_title": "Meetings", "hours_consumed": 6.5},
+				{"task_title": "Feature Development", "hours_consumed": 35},
+			]
+		],
 	)
 
 	@field_validator("replacements")
