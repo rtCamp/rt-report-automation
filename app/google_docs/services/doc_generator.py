@@ -266,11 +266,10 @@ class DocGeneratorService:
 	) -> None:
 		"""Insert task rows into the hours breakdown table in the document.
 
-		Expects the template to contain a 3-column table with:
+		Expects the template to contain a 2-column table with:
 			- Row 0: Bold column headers (pre-built in template)
 			- Row 1: A cell containing {{{rtai-hoursBreakdown-rtai}}}
-			- Row 2: Totals row with {{{rtai-totalEstimateHours-rtai}}}
-					and {{{rtai-totalHoursConsumed-rtai}}}
+			- Row 2: Totals row with {{{rtai-totalHoursConsumed-rtai}}}
 
 		Steps:
 			1. Fetch the doc to find the placeholder cell location
@@ -372,7 +371,6 @@ class DocGeneratorService:
 			for col, val in enumerate(
 				[
 					item.task_title,
-					str(item.estimated_hours),
 					str(item.hours_consumed),
 				]
 			):
@@ -380,7 +378,6 @@ class DocGeneratorService:
 
 		fill_ops.sort(key=lambda x: x[0], reverse=True)
 
-		total_estimated = sum(item.estimated_hours for item in hours_breakdown)
 		total_consumed = sum(item.hours_consumed for item in hours_breakdown)
 
 		# Single batch: fill task rows + delete placeholder row + replace totals
@@ -400,15 +397,6 @@ class DocGeneratorService:
 									"rowIndex": placeholder_row,
 									"columnIndex": 0,
 								}
-							}
-						},
-						{
-							"replaceAllText": {
-								"containsText": {
-									"text": get_template_tag("totalEstimateHours"),
-									"matchCase": True,
-								},
-								"replaceText": str(total_estimated),
 							}
 						},
 						{

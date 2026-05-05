@@ -32,6 +32,7 @@ class GoogleDocsService:
 			doc_name: Name for the generated document.
 			parent_folder_id: Google Drive parent folder ID. The 'Automated Docs'
 				folder must already exist within this parent.
+			hours_breakdown: List of hours breakdown items for detailed reporting.
 
 		Returns:
 			dict: Dictionary containing the document URL.

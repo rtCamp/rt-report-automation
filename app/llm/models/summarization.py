@@ -151,9 +151,6 @@ class HoursBreakdownItem(BaseModel):
 	"""A single task entry for the hours breakdown table in the generated report."""
 
 	task_title: str = Field(..., description="Task or epic name", min_length=1)
-	estimated_hours: float = Field(
-		..., description="Hours estimated for the task", ge=0
-	)
 	hours_consumed: float = Field(..., description="Actual hours consumed", ge=0)
 
 
@@ -180,12 +177,8 @@ class SummarizeRequest(BaseModel):
 		),
 		examples=[
 			[
-				{"task_title": "Meetings", "estimated_hours": 8, "hours_consumed": 6.5},
-				{
-					"task_title": "Feature Development",
-					"estimated_hours": 40,
-					"hours_consumed": 35,
-				},
+				{"task_title": "Meetings", "hours_consumed": 6.5},
+				{"task_title": "Feature Development", "hours_consumed": 35},
 			]
 		],
 	)

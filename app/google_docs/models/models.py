@@ -8,8 +8,6 @@ from app.google_docs.utils.constants import (
 )
 from app.llm.models.summarization import HoursBreakdownItem
 
-__all__ = ["HoursBreakdownItem"]
-
 
 class GenerateDocRequest(BaseModel):
 	"""Request model for generating a Google Doc.
@@ -70,12 +68,8 @@ class GenerateDocRequest(BaseModel):
 		),
 		examples=[
 			[
-				{"task_title": "Meetings", "estimated_hours": 8, "hours_consumed": 6.5},
-				{
-					"task_title": "Feature Development",
-					"estimated_hours": 40,
-					"hours_consumed": 35,
-				},
+				{"task_title": "Meetings", "hours_consumed": 6.5},
+				{"task_title": "Feature Development", "hours_consumed": 35},
 			]
 		],
 	)
