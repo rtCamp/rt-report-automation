@@ -13,7 +13,7 @@ class ProjectStatus(StrEnum):
 	"""Enumeration of project statuses."""
 
 	GREEN = "Green"
-	YELLOW = "Yellow"
+	AMBER = "Amber"
 	RED = "Red"
 
 

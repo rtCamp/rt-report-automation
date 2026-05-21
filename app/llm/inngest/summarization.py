@@ -6,7 +6,7 @@ import json
 
 import inngest
 from langchain.chat_models import init_chat_model
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langfuse import observe
 from pydantic import ValidationError
 

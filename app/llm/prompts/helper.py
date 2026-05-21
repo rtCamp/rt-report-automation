@@ -1,6 +1,6 @@
 """Helper functions for managing prompts."""
 
-from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langfuse import observe
 
 from app.core.adapters.langfuse import langfuse

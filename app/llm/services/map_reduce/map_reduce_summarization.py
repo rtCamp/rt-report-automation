@@ -3,13 +3,9 @@
 import json
 from typing import Any, Literal
 
-from langchain.chains.combine_documents.reduce import (
-	acollapse_docs,
-	split_list_of_docs,
-)
-from langchain.output_parsers import PydanticOutputParser
-from langchain.schema import Document
+from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.output_parsers import PydanticOutputParser
 from langfuse import observe
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
@@ -23,6 +19,7 @@ from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
 from app.llm.prompts import PREVIOUS_REPORT_INSTRUCTION
 from app.llm.prompts.helper import get_langfuse_prompt
 from app.llm.services.map_reduce.states import OverallState, SummaryState
+from app.llm.services.map_reduce.utils import acollapse_docs, split_list_of_docs
 
 
 class MapReduceSummarizationService:
