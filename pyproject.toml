@@ -15,12 +15,12 @@ dependencies = [
 	"python-multipart>=0.0.27",
 	"pre-commit>=4.3.0",
 	"langchain[anthropic,openai]>=0.3.27",
-	"langfuse>=3.3.4",
+	"langfuse>=3.10.0",
 	"inngest>=0.5.6",
 	"redis>=6.4.0",
 	"pyjwt>=2.10.1",
 	"cryptography>=45.0.7",
-	"langgraph>=0.6.6",
+	"langgraph>=1.2.0",
 	"langchain-google-genai>=2.1.10",
 	"slack-sdk>=3.36.0",
 	"google-auth>=2.36.0",
@@ -33,6 +33,7 @@ dependencies = [
 	"spacy>=3.8.11,<3.9.0",
 	"en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl#sha256=293e9547a655b25499198ab15a525b05b9407a75f10255e405e8c3854329ab63",
 	"html2text>=2025.4.15",
+	"langchain-text-splitters>=1.1.2",
 ]
 
 [dependency-groups]

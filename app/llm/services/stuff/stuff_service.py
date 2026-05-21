@@ -1,10 +1,9 @@
 """Service for summarizing documents using LangChain's stuff documents chain."""
 
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.output_parsers import PydanticOutputParser
-from langchain.prompts import PromptTemplate
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseLanguageModel
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
 from langfuse import observe
 
 from app.core.adapters.langfuse import langfuse, traced_chain_ainvoke
@@ -60,14 +59,10 @@ class StuffService:
 
 		prompt = PromptTemplate.from_template(prompt_template)
 
-		chain = create_stuff_documents_chain(
-			llm=self.llm,
-			output_parser=pydantic_parser,
-			prompt=prompt,
-		)
+		chain = prompt | self.llm | pydantic_parser
 
 		invoke_params: dict = {
-			"context": self.docs,
+			"context": "\n\n".join(doc.page_content for doc in self.docs),
 			"format_instructions": pydantic_parser.get_format_instructions(),
 		}
 

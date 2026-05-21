@@ -3,7 +3,7 @@
 import operator
 from typing import Annotated, TypedDict
 
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 
 class OverallState(TypedDict):
