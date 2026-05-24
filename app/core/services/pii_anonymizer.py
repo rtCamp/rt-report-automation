@@ -1,6 +1,7 @@
 """PII anonymization service using Microsoft Presidio."""
 
 import logging
+import re
 import threading
 from typing import Any, cast
 
@@ -265,6 +266,16 @@ class PIIAnonymizer:
 			for placeholder, original in sorted(
 				mapping.items(), key=lambda item: len(item[0]), reverse=True
 			):
+				# Replace exact form: <PERSON_1>
 				data = data.replace(placeholder, original)
+				# Also replace bare form (e.g. PERSON_1) in case the LLM stripped
+				# the surrounding angle brackets from the placeholder. Word
+				# boundaries prevent PERSON_1 from matching inside PERSON_10.
+				bare = re.escape(placeholder[1:-1])
+				data = re.sub(
+					r"\b" + bare + r"\b",
+					lambda m, orig=original: orig,
+					data,
+				)
 			return data
 		return data

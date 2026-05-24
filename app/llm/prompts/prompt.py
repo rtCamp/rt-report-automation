@@ -26,3 +26,12 @@ You MUST NOT:
 - Force transitions into the summary if there are none.
 The previous report is reference context only. The current data is the primary source of truth.
 """  # noqa: E501 -- LLM prompt text; line breaks would alter the prompt.
+
+PII_INSTRUCTION = """
+PII PLACEHOLDER PROTECTION:
+The input data contains PII placeholders like <PERSON_1>, <ORGANIZATION_2>, etc.
+You MUST:
+- Keep these placeholders EXACTLY as they are in your output.
+- NEVER remove the surrounding < > angle brackets from the placeholders.
+- NEVER try to guess or "de-anonymize" the names; always use the provided placeholders.
+"""
