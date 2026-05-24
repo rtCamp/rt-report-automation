@@ -9,7 +9,7 @@ from app.core.utils import log_and_raise
 from app.google_docs.services.converters import build_replacement_requests
 from app.google_docs.services.folder_manager import FolderManagerService
 from app.google_docs.services.google_auth import GoogleAuthService
-from app.google_docs.utils.constants import get_template_tag
+from app.google_docs.utils.constants import STATUS_COLORS, get_template_tag
 from app.google_docs.utils.helpers import fmt_hours
 from app.llm.models.summarization import HoursBreakdownItem
 
@@ -124,6 +124,10 @@ def _build_typed_replacements(
 			}
 		elif key in _MARKDOWN_KEYS:
 			typed[tag] = {"type": "markdown", "value": text_value}
+		elif key == "projectStatus":
+			# Use color-coded text for project status
+			color = STATUS_COLORS.get(text_value)
+			typed[tag] = {"type": "text", "value": text_value, "color": color}
 		else:
 			typed[tag] = {"type": "text", "value": text_value}
 

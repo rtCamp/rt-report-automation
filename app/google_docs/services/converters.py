@@ -214,6 +214,26 @@ def build_replacement_requests(
 			requests.append(
 				{"insertText": {"location": {"index": start}, "text": value}},
 			)
+			# Apply color if provided
+			color = replacement.get("color")
+			if color:
+				requests.append(
+					{
+						"updateTextStyle": {
+							"range": {
+								"startIndex": start,
+								"endIndex": start + len(value),
+							},
+							"textStyle": {
+								"backgroundColor": {
+									"color": {"rgbColor": color},
+								},
+								"bold": True,  # Making it bold for better visibility
+							},
+							"fields": "backgroundColor,bold",
+						},
+					},
+				)
 
 	return requests
 
