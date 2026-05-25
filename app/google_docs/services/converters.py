@@ -221,16 +221,24 @@ def build_replacement_requests(
 					{
 						"updateTextStyle": {
 							"range": {
-								"startIndex": start,
-								"endIndex": start + len(value),
+								"startIndex": start - 1,
+								"endIndex": start + len(value) + 1,
 							},
 							"textStyle": {
 								"backgroundColor": {
 									"color": {"rgbColor": color},
 								},
-								"bold": True,  # Making it bold for better visibility
+								"foregroundColor": {
+									"color": {
+										"rgbColor": {
+											"red": 1.0,
+											"green": 1.0,
+											"blue": 1.0,
+										},
+									},
+								},
 							},
-							"fields": "backgroundColor,bold",
+							"fields": "backgroundColor,foregroundColor,bold",
 						},
 					},
 				)
