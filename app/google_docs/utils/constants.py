@@ -19,6 +19,13 @@ DEFAULT_MAX_RECURSION_DEPTH = 10  # Maximum depth for recursive folder search
 # naming decision is made.
 AUTOMATED_DOCS_FOLDER_NAME = "Automated Docs"
 
+# Project status colors (RGB format for Google Docs API)
+STATUS_COLORS = {
+	"Green": {"red": 0.2039, "green": 0.6588, "blue": 0.3255},
+	"Amber": {"red": 0.9843, "green": 0.7373, "blue": 0.0157},
+	"Red": {"red": 0.9176, "green": 0.2627, "blue": 0.2078},
+}
+
 
 def get_template_tag(key: str) -> str:
 	"""Generate a template tag for replacements.

@@ -182,6 +182,11 @@ def build_replacement_requests(
 			Each descriptor is a dict with at minimum a ``"type"`` key:
 			``{"type": "text", "value": "..."}`` for plain text insertion or
 			``{"type": "markdown", "value": "..."}`` for markdown with styling.
+			For ``"text"`` type, an optional ``"color"`` key may be provided to
+			apply a background color, white foreground, and bold styling to the
+			inserted text. The value must be an RGB dict as accepted by the
+			Google Docs API, e.g.
+			``{"red": 0.9529, "green": 0.4118, "blue": 0.3843}``.
 
 	Returns:
 		List of Google Docs batchUpdate request dicts, ready to be passed in
@@ -214,6 +219,35 @@ def build_replacement_requests(
 			requests.append(
 				{"insertText": {"location": {"index": start}, "text": value}},
 			)
+			# Apply color if provided
+			color = replacement.get("color")
+			if color:
+				requests.append(
+					{
+						"updateTextStyle": {
+							"range": {
+								"startIndex": start,
+								"endIndex": start + len(value),
+							},
+							"textStyle": {
+								"backgroundColor": {
+									"color": {"rgbColor": color},
+								},
+								"foregroundColor": {
+									"color": {
+										"rgbColor": {
+											"red": 1.0,
+											"green": 1.0,
+											"blue": 1.0,
+										},
+									},
+								},
+								"bold": True,
+							},
+							"fields": "backgroundColor,foregroundColor,bold",
+						},
+					},
+				)
 
 	return requests
 
