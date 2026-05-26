@@ -8,7 +8,7 @@ from langfuse import observe
 
 from app.core.adapters.langfuse import langfuse, traced_chain_ainvoke
 from app.llm.models.summarization import ProjectSummarySchema
-from app.llm.prompts.prompt import FORMAT, PREVIOUS_REPORT_INSTRUCTION
+from app.llm.prompts.prompt import FORMAT, PII_INSTRUCTION, PREVIOUS_REPORT_INSTRUCTION
 
 
 class StuffService:
@@ -48,6 +48,9 @@ class StuffService:
 		langfuse_prompt = langfuse.get_prompt(self.prompt_slug)
 
 		prompt_template = langfuse_prompt.get_langchain_prompt(format=FORMAT)
+		# Ensure PII placeholders are preserved
+		prompt_template = f"{PII_INSTRUCTION}\n{prompt_template}"
+
 		if self.previous_report:
 			# Prepend instruction so the LLM sees it before the main task
 			prompt_template = (

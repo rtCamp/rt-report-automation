@@ -16,7 +16,7 @@ from app.core.adapters.langfuse import (
 )
 from app.llm.models.summarization import ProjectSummarySchema
 from app.llm.prompts import FORMAT as FORMAT_INSTRUCTIONS
-from app.llm.prompts import PREVIOUS_REPORT_INSTRUCTION
+from app.llm.prompts import PII_INSTRUCTION, PREVIOUS_REPORT_INSTRUCTION
 from app.llm.prompts.helper import get_langfuse_prompt
 from app.llm.services.map_reduce.states import OverallState, SummaryState
 from app.llm.services.map_reduce.utils import acollapse_docs, split_list_of_docs
@@ -66,7 +66,8 @@ class MapReduceSummarizationService:
 			{"context": state["content"]},
 		)
 
-		response = traced_llm_invoke(self.llm, prompt.to_string())
+		prompt_str = f"{PII_INSTRUCTION}\n{prompt.to_string()}"
+		response = traced_llm_invoke(self.llm, prompt_str)
 		summary = response.content
 		return {
 			"summaries": [
@@ -106,7 +107,8 @@ class MapReduceSummarizationService:
 			{"docs": combined_summaries},
 		)
 
-		response = await traced_llm_ainvoke(self.llm, prompt.to_string())
+		prompt_str = f"{PII_INSTRUCTION}\n{prompt.to_string()}"
+		response = await traced_llm_ainvoke(self.llm, prompt_str)
 		summary = response.content
 		if isinstance(summary, (dict | list)):
 			return json.dumps(summary)
@@ -159,6 +161,9 @@ class MapReduceSummarizationService:
 		)
 
 		prompt_str = prompt.to_string()
+		# Ensure PII placeholders are preserved
+		prompt_str = f"{PII_INSTRUCTION}\n{prompt_str}"
+
 		if self.previous_report:
 			# Prepend instruction so LLM sees it first, then append the
 			# previous report as clearly separated reference context.
