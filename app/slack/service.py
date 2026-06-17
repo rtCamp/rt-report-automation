@@ -125,7 +125,7 @@ class SlackService:
 		legacy_workflow_name = workflow_name.lower().strip()
 
 		for message in messages:
-			username = str(message.get("username", "")).lower()
+			username = str(message.get("username", "")).strip().lower()
 			# Backward compatibility: accept legacy exact name
 			# and standup/tracker workflows.
 			if (
