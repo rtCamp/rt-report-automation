@@ -109,30 +109,30 @@ class SlackService:
 	) -> list[dict]:
 		"""Filter messages that are part of a specific workflow.
 
-		Supports both old format ("AI Internal - Daily Tasks Tracker") and
-		new format ("Daily Standup Tracker") workflows.
+		Supports backward compatibility by accepting workflow usernames that
+		contain either "standup" or "tracker" (case-insensitive).
 
 		Args:
 			messages (list[dict]): The list of messages to filter.
-			workflow_name (str): The name of the workflow to filter by.
+			workflow_name (str): Legacy workflow name (kept for compatibility).
 
 		Returns:
 			list[dict]: A list of messages that are part of the specified workflow.
 
 		"""
 		filtered_messages = []
-		# New format uses "Daily Standup Tracker", old format uses workflow_name
-		# Accept both to support migration period
-		accepted_usernames = [
-			workflow_name,  # Old format: "AI Internal - Daily Tasks Tracker"
-			"Daily Standup Tracker",  # New format
-		]
+		workflow_keywords = ("standup", "tracker")
+		legacy_workflow_name = workflow_name.lower().strip()
 
 		for message in messages:
+			username = str(message.get("username", "")).lower()
 			if (
 				"bot_id" in message
 				and "username" in message
-				and message["username"] in accepted_usernames
+				and (
+					legacy_workflow_name == username
+					or any(keyword in username for keyword in workflow_keywords)
+				)
 			):
 				filtered_messages.append(message)
 
