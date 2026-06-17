@@ -126,6 +126,8 @@ class SlackService:
 
 		for message in messages:
 			username = str(message.get("username", "")).lower()
+			# Backward compatibility: accept legacy exact name
+			# and standup/tracker workflows.
 			if (
 				"bot_id" in message
 				and "username" in message
