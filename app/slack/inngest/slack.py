@@ -6,7 +6,7 @@ import inngest
 from pydantic import ValidationError
 
 from app.core.adapters import inngest_client
-from app.core.utils import to_unix, validate
+from app.core.utils import to_unix_inclusive_date_range, validate
 from app.llm.models.summarization import ProjectMetadata, SlackMetadata
 from app.slack.constants import SLACK_API_RATE_LIMIT
 from app.slack.service import SlackService
@@ -53,8 +53,10 @@ async def fetch_slack(ctx: inngest.Context):
 		slack_metadata = SlackMetadata.model_validate(slack_data)
 		project_metadata = ProjectMetadata.model_validate(project_data)
 
-		start_ts = to_unix(project_metadata.start_date)
-		end_ts = to_unix(project_metadata.end_date)
+		start_ts, end_ts = to_unix_inclusive_date_range(
+			project_metadata.start_date,
+			project_metadata.end_date,
+		)
 
 		slack_service = SlackService()
 
