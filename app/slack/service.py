@@ -211,17 +211,34 @@ class SlackService:
 		# Fetch messages from the channel
 		messages = self._get_messages(channel_id, start_time, end_time)
 
-		# Filter messages by the standup workflow
-		messages = self._filter_messages_by_workflow(
+		# Restrict to standup/tracker workflow messages.
+		workflow_messages = self._filter_messages_by_workflow(
 			messages,
 			STANDUP_WORKFLOW_NAME,
 		)
 
 		all_standup_entries = []
 
-		for message in messages:
+		for message in workflow_messages:
 			replies = self._get_thread_messages(channel_id, message["ts"])
 			thread_timestamp = float(message["ts"])
+
+			if not self.parser.thread_has_new_format_identifier(replies):
+				# Old workflow: parse using keyword anchors
+				# (yesterday/today/blocker/demo).
+				# Replies without any keyword anchor are skipped (casual chat).
+				legacy_entries = self.parser.parse_thread_legacy(
+					replies, thread_timestamp
+				)
+				if legacy_entries:
+					all_standup_entries.extend(legacy_entries)
+				else:
+					self.logger.warning(
+						"No standup keyword anchors found in old-format"
+						" thread %s. Skipping.",
+						message["ts"],
+					)
+				continue
 
 			try:
 				standup_entries = self.parser.parse_thread(replies, thread_timestamp)

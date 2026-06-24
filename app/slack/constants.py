@@ -16,6 +16,16 @@ STANDARD_QUESTIONS = [
 	"demo",
 ]
 
+# Keyword anchors used to detect standup sections in legacy/old-format threads
+# that do not contain NEW_FORMAT_IDENTIFIER. Matching is case-insensitive and
+# checks whether a line contains any of these keywords as a section header.
+KEYWORD_ANCHORS: dict[str, list[str]] = {
+	"yesterday": ["yesterday"],
+	"today": ["today"],
+	"blockers": ["blocker", "blockers"],
+	"demo": ["demo"],
+}
+
 # Parser thresholds (all measured in characters).
 STANDUP_MIN_QUESTION_LINE_LENGTH = 10
 STANDUP_MAX_HEADER_MATCH_OFFSET = 15
@@ -28,6 +38,7 @@ STANDUP_LONG_LINE_LENGTH_THRESHOLD = 100
 # New format identifier - messages starting with this are in the new format
 NEW_FORMAT_IDENTIFIER = "# Daily update from"
 
+# New format question patterns
 # New format question patterns
 NEW_FORMAT_PATTERNS = {
 	"yesterday": ["what did you work on yesterday"],

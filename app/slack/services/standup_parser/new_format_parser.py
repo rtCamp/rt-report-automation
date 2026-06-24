@@ -40,5 +40,13 @@ class NewFormatParser(BaseParser):
 		return first_line.startswith(normalized_identifier)
 
 	def message_has_questions(self, message: dict) -> bool:
-		"""Treat presence of the new-format header as confirmation of validity."""
-		return self.is_new_format_message(message)
+		"""Check if message should be parsed with NEW_FORMAT_PATTERNS.
+
+		Accepts either:
+		- canonical new-format header, or
+		- any recognizable standard question from NEW_FORMAT_PATTERNS.
+		"""
+		if self.is_new_format_message(message):
+			return True
+
+		return super().message_has_questions(message)
