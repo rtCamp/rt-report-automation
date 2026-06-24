@@ -42,11 +42,6 @@ class NewFormatParser(BaseParser):
 	def message_has_questions(self, message: dict) -> bool:
 		"""Check if message should be parsed with NEW_FORMAT_PATTERNS.
 
-		Accepts either:
-		- canonical new-format header, or
-		- any recognizable standard question from NEW_FORMAT_PATTERNS.
+		Treat presence of the new-format header as confirmation of validity.
 		"""
-		if self.is_new_format_message(message):
-			return True
-
-		return super().message_has_questions(message)
+		return self.is_new_format_message(message)

@@ -39,7 +39,6 @@ STANDUP_LONG_LINE_LENGTH_THRESHOLD = 100
 NEW_FORMAT_IDENTIFIER = "# Daily update from"
 
 # New format question patterns
-# New format question patterns
 NEW_FORMAT_PATTERNS = {
 	"yesterday": ["what did you work on yesterday"],
 	"today": ["what will you be working on today"],
