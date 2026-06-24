@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from toon import encode as process_json_to_toon
 
-from app.slack.constants import STANDARD_QUESTIONS
+from app.slack.constants import KEYWORD_ANCHORS, STANDARD_QUESTIONS
 from app.slack.models.models import DailyUpdateEntry, DailyUpdateQuestionAnswer
 from app.slack.services.standup_parser.base import BaseParser
 from app.slack.services.standup_parser.new_format_parser import NewFormatParser
@@ -38,10 +38,113 @@ class StandupParser:
 			message: Slack message object.
 
 		Returns:
-			"new" if new format, "old" if old format.
+			"new" if message matches the new-format header,
+			otherwise "old".
 
 		"""
 		return "new" if self._new_parser.is_new_format_message(message) else "old"
+
+	def thread_has_new_format_identifier(self, messages: list[dict]) -> bool:
+		"""Return True if any message in the thread has the new-format header."""
+		for message in messages:
+			if self._new_parser.is_new_format_message(message):
+				return True
+		return False
+
+	@staticmethod
+	def _keyword_anchor_for_line(line: str) -> str | None:
+		"""Return a STANDARD_QUESTIONS key if the line is a keyword anchor.
+
+		A line is treated as an anchor when it is short enough to be a question
+		header (under 80 chars) and contains one of the KEYWORD_ANCHORS words.
+		"""
+		normalized = line.lower().strip()
+		if not normalized or len(normalized) > 80:
+			return None
+		for question_key, keywords in KEYWORD_ANCHORS.items():
+			if any(kw in normalized for kw in keywords):
+				return question_key
+		return None
+
+	def parse_thread_legacy(
+		self,
+		messages: list[dict],
+		thread_timestamp: float,
+	) -> list[DailyUpdateEntry]:
+		"""Parse an old-format thread using keyword anchors.
+
+		Used when the thread belongs to a standup/tracker workflow but does not
+		contain the new-format identifier.  Each reply is scanned for lines
+		containing keyword anchors ("yesterday", "today", "blocker", "demo").
+		Answer lines between anchors are grouped under the matching key.  Replies
+		that contain no keyword anchors are skipped (treated as casual chat).
+
+		Args:
+			messages: List of Slack message objects from a thread.
+			thread_timestamp: Timestamp of the thread parent message.
+
+		Returns:
+			List of DailyUpdateEntry with keyword-structured answers.
+
+		"""
+		first_message_is_bot = messages and (
+			"bot_id" in messages[0] or messages[0].get("subtype") == "bot_message"
+		)
+		thread_replies = (
+			messages[1:] if first_message_is_bot and len(messages) > 1 else messages
+		)
+
+		entries: list[DailyUpdateEntry] = []
+
+		for message in thread_replies:
+			text = self._new_parser.get_message_text(message).strip()
+			if not text:
+				continue
+
+			answers: dict[str, list[str]] = {}
+			current_key: str | None = None
+			current_lines: list[str] = []
+
+			for raw_line in text.splitlines():
+				anchor = self._keyword_anchor_for_line(raw_line)
+				if anchor:
+					if current_key and current_lines:
+						answers.setdefault(current_key, []).append(
+							"\n".join(current_lines).strip()
+						)
+					current_key = anchor
+					current_lines = []
+				elif current_key:
+					cleaned = raw_line.strip().lstrip("-• ").strip()
+					if cleaned:
+						current_lines.append(cleaned)
+
+			# Commit last section.
+			if current_key and current_lines:
+				answers.setdefault(current_key, []).append(
+					"\n".join(current_lines).strip()
+				)
+
+			# Skip replies that had no keyword anchors (casual chat).
+			if not answers:
+				continue
+
+			message_ts = float(message.get("ts", thread_timestamp))
+			message_date = datetime.fromtimestamp(message_ts, tz=UTC).strftime(
+				"%B %d, %Y"
+			)
+			entry = DailyUpdateEntry(date=message_date, timestamp=message_ts)
+			for question_key, answer_texts in answers.items():
+				entry.answers[question_key] = [
+					DailyUpdateQuestionAnswer(
+						question_key=question_key, text=answer_text
+					)
+					for answer_text in answer_texts
+					if answer_text
+				]
+			entries.append(entry)
+
+		return entries
 
 	def _get_parser_for_message(self, message: dict) -> BaseParser:
 		"""Get appropriate parser for a message.

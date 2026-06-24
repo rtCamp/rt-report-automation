@@ -294,8 +294,9 @@ class BaseParser:
 		question_key: str,
 	) -> str | None:
 		"""Return an answer that appears on the same line as the question."""
-		# Split on the first "? " or ": " to capture inline answers after the question.
-		after_separators = re.split(r"[?:]\s+", original_line, maxsplit=1)
+		# Split on the first '?' or ':' to capture inline answers after the question,
+		# even when no space follows the separator.
+		after_separators = re.split(r"[?:]\s*", original_line, maxsplit=1)
 		if len(after_separators) <= 1:
 			return None
 
