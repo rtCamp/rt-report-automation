@@ -38,11 +38,11 @@ class StandupParser:
 			message: Slack message object.
 
 		Returns:
-			"new" if message matches NEW_FORMAT_PATTERNS/new header,
+			"new" if message matches the new-format header,
 			otherwise "old".
 
 		"""
-		return "new" if self._new_parser.message_has_questions(message) else "old"
+		return "new" if self._new_parser.is_new_format_message(message) else "old"
 
 	def thread_has_new_format_identifier(self, messages: list[dict]) -> bool:
 		"""Return True if any message in the thread has the new-format header."""
