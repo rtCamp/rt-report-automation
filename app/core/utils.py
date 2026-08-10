@@ -112,7 +112,19 @@ def log_and_raise(
 	if http_status_code:
 		exception = HTTPException(status_code=http_status_code, detail=message)
 	else:
-		exception = exception_type(message)
+		try:
+			exception = exception_type(message)
+		except TypeError:
+			# Some exception classes (e.g. slack_sdk.errors.SlackApiError,
+			# which requires a `response` argument) can't be constructed
+			# from a bare message string -- this matters here because
+			# callers commonly pass `exception_type=exc.__class__` to
+			# preserve the original exception's type. Falling back to a
+			# plain Exception avoids crashing on that construction (which
+			# would mask the real error with a confusing TypeError); the
+			# original exception's real type and details are still
+			# preserved via `raise ... from cause` below.
+			exception = Exception(message)
 
 	# Raise with or without chaining
 	if cause:

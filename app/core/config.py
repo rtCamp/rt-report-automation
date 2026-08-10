@@ -33,7 +33,11 @@ class Settings(BaseSettings):
 	LANGFUSE_HOST: HttpUrl
 
 	# Inngest Configuration
-	# INNGEST_BASE_URL: HttpUrl
+	# INNGEST_BASE_URL is read directly by the inngest SDK from the process
+	# environment; it's declared here only so pydantic doesn't reject it as
+	# an unrecognized env var. Comment it out (or unset it) in production to
+	# use the default Inngest Cloud URL.
+	INNGEST_BASE_URL: str | None = None
 	INNGEST_DEV: int
 	INNGEST_EVENT_KEY: SecretStr
 	INNGEST_SIGNING_KEY: SecretStr
@@ -52,6 +56,16 @@ class Settings(BaseSettings):
 
 	# Slack Configuration
 	SLACK_BOT_TOKEN: SecretStr
+	SLACK_PMS_CONNECTOR_BOT_TOKEN: SecretStr
+	SLACK_PMS_CONNECTOR_SIGNING_SECRET: SecretStr
+
+	# Frappe PMS Configuration
+	FRAPPE_BASE_URL: HttpUrl
+	FRAPPE_API_TOKEN: SecretStr
+	# Debug-only override: when set, /pms commands act as this email instead
+	# of resolving the actual Slack caller's email. Leave unset outside local
+	# testing.
+	PMS_DEBUG_EMAIL_OVERRIDE: str | None = None
 
 	# Google Workspace Configuration
 	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr
@@ -90,6 +104,19 @@ class Settings(BaseSettings):
 
 		if not self.SLACK_BOT_TOKEN.get_secret_value().strip():
 			raise ValueError("SLACK_BOT_TOKEN must be set and cannot be empty")
+
+		if not self.SLACK_PMS_CONNECTOR_BOT_TOKEN.get_secret_value().strip():
+			raise ValueError(
+				"SLACK_PMS_CONNECTOR_BOT_TOKEN must be set and cannot be empty",
+			)
+
+		if not self.SLACK_PMS_CONNECTOR_SIGNING_SECRET.get_secret_value().strip():
+			raise ValueError(
+				"SLACK_PMS_CONNECTOR_SIGNING_SECRET must be set and cannot be empty",
+			)
+
+		if not self.FRAPPE_API_TOKEN.get_secret_value().strip():
+			raise ValueError("FRAPPE_API_TOKEN must be set and cannot be empty")
 
 		# Validate Google Workspace configuration
 		if not self.GOOGLE_SERVICE_ACCOUNT_KEY.get_secret_value().strip():

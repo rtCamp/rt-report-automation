@@ -131,3 +131,72 @@ def get_issue_search_query(
 		start_date=format_to_yymmdd(start_date),
 		end_date=format_to_yymmdd(end_date),
 	)
+
+
+def get_multi_repo_open_issues_search_query(repos: list[tuple[str, str]]) -> str:
+	"""Generate a search query for open issues across one or more repositories.
+
+	GitHub's search syntax treats repeated `repo:` qualifiers as an OR, so
+	all of a project's linked repositories can be searched in one call.
+
+	Args:
+		repos (list[tuple[str, str]]): (owner, repo) pairs to search across.
+
+	Returns:
+		str: A formatted GitHub issue search query string.
+
+	"""
+	repo_qualifiers = " ".join(f"repo:{owner}/{repo}" for owner, repo in repos)
+	return f"{repo_qualifiers} is:issue is:open"
+
+
+def get_audit_issue_fetch_query() -> str:
+	"""Generate a GraphQL query string to fetch open issues for the /pms audit.
+
+	Leaner than `get_issue_fetch_query`: no comments, labels, or
+	cross-referenced PRs, since the audit only needs status and dates.
+	Also fetches date-type project fields (e.g. "Start date", "Target
+	date"), which `get_issue_fetch_query` doesn't request.
+
+	Returns:
+		str: A GraphQL query string.
+
+	"""
+	return """
+	query ($search_query: String!) {
+		search(query: $search_query, type: ISSUE, first: 100) {
+			nodes {
+			... on Issue {
+				number
+				title
+				url
+				state
+				projectItems(first: 10) {
+				items: nodes {
+					fieldValues(first: 50) {
+					items: nodes {
+						... on ProjectV2ItemFieldSingleSelectValue {
+						name
+						field {
+							... on ProjectV2SingleSelectField {
+							name
+							}
+						}
+						}
+						... on ProjectV2ItemFieldDateValue {
+						date
+						field {
+							... on ProjectV2FieldCommon {
+							name
+							}
+						}
+						}
+					}
+					}
+				}
+				}
+			}
+			}
+		}
+		}
+		"""

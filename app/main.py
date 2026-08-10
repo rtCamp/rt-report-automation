@@ -10,8 +10,13 @@ from app.core.logger import LogLevels, configure_logging
 from app.github.inngest import fetch_github_issues
 from app.github.inngest.token_refresh import refresh_github_access_token
 from app.google_docs.inngest import fetch_previous_report, generate_google_doc
-from app.llm.inngest import summarization, summarization_workflow
-from app.slack.inngest import fetch_slack
+from app.llm.inngest import generate_audit_tips, summarization, summarization_workflow
+from app.slack.inngest import (
+	audit_and_send_project,
+	fetch_slack,
+	handle_pms_command,
+	run_all_project_audits,
+)
 
 configure_logging(log_level=LogLevels.info)
 
@@ -41,10 +46,14 @@ setup_inngest(
 		summarization_workflow,
 		summarization,
 		fetch_slack,
+		handle_pms_command,
 		fetch_github_issues,
 		generate_google_doc,
 		fetch_previous_report,
 		refresh_github_access_token,
+		generate_audit_tips,
+		run_all_project_audits,
+		audit_and_send_project,
 	],
 )
 
