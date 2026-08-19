@@ -79,7 +79,12 @@ async def generate_audit_tips(ctx: inngest.Context) -> dict:
 		result_json = await service.generate()
 
 		parsed = json.loads(result_json)
-		return PIIAnonymizer.deanonymize(parsed, pii_anonymizer.mapping)
+		deanonymized = PIIAnonymizer.deanonymize(parsed, pii_anonymizer.mapping)
+		if not validate(deanonymized, dict):
+			raise TypeError(
+				f"Expected dict from deanonymize(), got {type(deanonymized).__name__}"
+			)
+		return deanonymized
 
 	except KeyError as e:
 		ctx.logger.error(f"Missing required field in event data: {e}")
