@@ -8,17 +8,18 @@ import httpx
 from app.core.config import settings
 from app.core.utils import log_and_raise
 from app.frappe.constants import (
+	DOCSHARE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
 	NON_BILLABLE_TYPE,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_DETAIL_FIELDS,
 	PROJECT_DOCTYPE,
 	PROJECT_MANAGER_FIELD,
-	PROJECT_STATUS_OPEN,
+	PROJECT_SUPPRESSED_STATUSES,
 	PROJECT_TIMELINE_ITEM_DOCTYPE,
 	RISK_DOCTYPE,
-	TASK_DOCTYPE,
 	TODO_DOCTYPE,
+	USER_DOCTYPE,
 )
 
 
@@ -82,22 +83,17 @@ class FrappeService:
 				cause=exc,
 			)
 
-	async def get_billable_open_projects(
-		self,
-		manager_emails: list[str] | None = None,
-	) -> list[dict]:
-		"""Fetch every open, billable project, for the scheduler-triggered bulk audit.
+	async def get_billable_open_projects(self) -> list[dict]:
+		"""Fetch every active, billable project, for the scheduler-triggered bulk audit.
+
+		"Active" excludes `PROJECT_SUPPRESSED_STATUSES` (On hold, Completed,
+		Cancelled) rather than requiring status == "Open", so any other
+		in-progress status value still gets audited.
 
 		Unlike `get_projects_by_manager_email`, this isn't scoped to a known
 		manager -- it fetches `PROJECT_MANAGER_FIELD` (the PM's email)
 		directly in the results so the caller can route each project's
 		audit to the right person.
-
-		Args:
-			manager_emails (list[str] | None): When set, restricts to
-				projects managed by any of these emails -- used to scope
-				test runs to a handful of people's projects rather than
-				the whole company.
 
 		Returns:
 			list[dict]: Project records with `name`, `project_name`,
@@ -110,11 +106,9 @@ class FrappeService:
 			fieldname for fieldname, _ in PROJECT_DETAIL_FIELDS
 		]
 		filters = [
-			["status", "=", PROJECT_STATUS_OPEN],
+			["status", "not in", list(PROJECT_SUPPRESSED_STATUSES)],
 			[PROJECT_BILLING_TYPE_FIELD, "!=", NON_BILLABLE_TYPE],
 		]
-		if manager_emails:
-			filters.append([PROJECT_MANAGER_FIELD, "in", manager_emails])
 		return await self._fetch_list(PROJECT_DOCTYPE, filters, fields)
 
 	async def _fetch_list(
@@ -210,6 +204,50 @@ class FrappeService:
 				cause=exc,
 			)
 
+	async def get_user_roles(self, email: str) -> list[str]:
+		"""Fetch the Frappe roles assigned to a user.
+
+		A User's `name` is their email address, and `roles` is a child
+		table (`Has Role`) returned inline by the single-document fetch --
+		powers the /pms audit command's Delivery Manager override, which
+		lets a Delivery Manager audit any project by exact ID even when
+		they aren't its PM.
+
+		Args:
+			email (str): The user's email (Frappe User `name`).
+
+		Returns:
+			list[str]: Role names, e.g. ["Employee", "Delivery Manager"].
+				Empty if the user doesn't exist or the lookup fails.
+
+		"""
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.get(
+					f"{self.base_url}/api/resource/{USER_DOCTYPE}/{email}",
+					headers=self.headers,
+				)
+
+			if response.status_code != 200:
+				self.logger.warning(
+					"Error fetching user %s: %s %s",
+					email,
+					response.status_code,
+					response.text,
+				)
+				return []
+
+			data = response.json().get("data") or {}
+			return [row["role"] for row in data.get("roles") or [] if row.get("role")]
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching user roles from Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
 	async def get_milestones_by_project(self, project_id: str) -> list[dict]:
 		"""Fetch Project Timeline Item records (type=Milestone) for a project.
 
@@ -240,37 +278,19 @@ class FrappeService:
 			],
 		)
 
-	async def get_tasks_by_project(self, project_id: str) -> list[dict]:
-		"""Fetch all Task records (todos and legacy is_milestone tasks) for a project.
-
-		Args:
-			project_id (str): The Frappe Project `name`.
-
-		Returns:
-			list[dict]: Task records with `name`, `subject`, `status`,
-				`is_milestone`, `exp_end_date`, and `priority`.
-
-		"""
-		return await self._fetch_list(
-			TASK_DOCTYPE,
-			[["project", "=", project_id]],
-			["name", "subject", "status", "is_milestone", "exp_end_date", "priority"],
-		)
-
 	async def get_todos_by_project(self, project_id: str) -> list[dict]:
 		"""Fetch standalone ToDo records (Frappe's generic to-do list) for a project.
 
-		Distinct from `get_tasks_by_project`: some projects track todos as
-		`Task` records, others via this generic, doctype-agnostic ToDo
-		list (linked here through `reference_type`/`reference_name` rather
-		than a `project` field), so both are queried and merged.
+		The sole source for the /pms audit's todos section -- `Task` records
+		are no longer queried for todos.
 
 		Args:
 			project_id (str): The Frappe Project `name`.
 
 		Returns:
-			list[dict]: ToDo records with `name`, `description`, `status`,
-				and `date` (the due date, may be None).
+			list[dict]: ToDo records with `name`, `custom_title`,
+				`description`, `status`, and `date` (the due date, may be
+				None).
 
 		"""
 		return await self._fetch_list(
@@ -279,7 +299,7 @@ class FrappeService:
 				["reference_type", "=", PROJECT_DOCTYPE],
 				["reference_name", "=", project_id],
 			],
-			["name", "description", "status", "date"],
+			["name", "custom_title", "description", "status", "date"],
 		)
 
 	async def get_risks_by_project(self, project_id: str) -> list[dict]:
@@ -298,6 +318,29 @@ class FrappeService:
 			[["project", "=", project_id]],
 			["name", "status", "risk_level", "risk_category", "summary"],
 		)
+
+	async def get_project_shares(self, project_id: str) -> list[str]:
+		"""Fetch the emails of every user this Project record is shared with.
+
+		Next PMS has no dedicated "team members" field -- the Members
+		panel's team list is derived from Frappe's document sharing
+		(`DocShare`), so this is what backs the /pms audit's team-roster
+		check (see `DOCSHARE_DOCTYPE`'s docstring in constants.py).
+
+		Args:
+			project_id (str): The Frappe Project `name`.
+
+		Returns:
+			list[str]: User emails the project is shared with. Empty if
+				none or the lookup fails.
+
+		"""
+		shares = await self._fetch_list(
+			DOCSHARE_DOCTYPE,
+			[["share_doctype", "=", PROJECT_DOCTYPE], ["share_name", "=", project_id]],
+			["user"],
+		)
+		return [share["user"] for share in shares if share.get("user")]
 
 	async def get_github_repositories(self, names: list[str]) -> list[dict]:
 		"""Fetch display info for a set of GitHub Repository records.

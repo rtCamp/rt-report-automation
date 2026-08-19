@@ -62,10 +62,6 @@ class Settings(BaseSettings):
 	# Frappe PMS Configuration
 	FRAPPE_BASE_URL: HttpUrl
 	FRAPPE_API_TOKEN: SecretStr
-	# Debug-only override: when set, /pms commands act as this email instead
-	# of resolving the actual Slack caller's email. Leave unset outside local
-	# testing.
-	PMS_DEBUG_EMAIL_OVERRIDE: str | None = None
 
 	# Google Workspace Configuration
 	GOOGLE_SERVICE_ACCOUNT_KEY: SecretStr

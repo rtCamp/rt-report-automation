@@ -14,9 +14,15 @@ from app.core.config import settings
 from app.core.utils import to_unix_inclusive_date_range, validate
 from app.frappe.constants import (
 	BOOLEAN_FIELDS,
+	DELIVERY_MANAGER_ROLE,
+	PROJECT_BILLING_TYPE_FIELD,
+	PROJECT_BUDGET_FIELD,
 	PROJECT_DETAIL_FIELDS,
 	PROJECT_DETAIL_SECTIONS,
+	PROJECT_ENGINEERING_MANAGER_FIELD,
 	PROJECT_MANAGER_FIELD,
+	PROJECT_SUPPRESSED_STATUSES,
+	RETAINER_BILLING_TYPE,
 	RISK_BLOCKED_STATUS,
 	RISK_LEVEL_ORDER,
 	RISK_MITIGATED_STATUS,
@@ -324,6 +330,7 @@ def _format_missing_fields_section(project: dict) -> list[dict]:
 		for section_title, field in missing
 	]
 	blocks.append(_table_block(["SECTION", "FIELD"], rows))
+	blocks.append(_open_overview_button(project["name"]))
 	blocks.append(
 		{
 			"type": "section",
@@ -373,28 +380,34 @@ def _strip_html(text: str) -> str:
 	return _HTML_TAG_RE.sub("", text).strip()
 
 
-# Each bucket now renders as its own Slack block (see _format_task_section,
+# Each bucket now renders as its own Slack block (see _format_todo_section,
 # _format_risk_section, _format_github_issues_section), so this can be
 # raised well past what a single combined block could safely hold.
 _MAX_AUDIT_ITEMS_PER_BUCKET = 15
 _GITHUB_UPCOMING_WINDOW_DAYS = 7
+_TODO_UPCOMING_WINDOW_DAYS = 7
 
 
-def _categorize_tasks(tasks: list[dict]) -> dict[str, list[dict]]:
-	"""Bucket Task records into overdue, no-deadline, upcoming, and done.
+def _categorize_todos(tasks: list[dict]) -> dict[str, list[dict]]:
+	"""Bucket Task/ToDo records into overdue, upcoming, later, no-deadline, and done.
 
 	"Overdue" and "no deadline" are computed directly from `exp_end_date`
 	and `status` rather than trusted from Frappe's own "Overdue" status
 	value, since that depends on a scheduled job having run recently.
+	"Upcoming" is scoped to `_TODO_UPCOMING_WINDOW_DAYS` (matching the
+	Monday audit cadence) -- anything further out lands in "later" so
+	nothing is silently dropped, mirroring `_categorize_github_issues`.
 	"""
 	# Frappe's dates arrive naive (no tz info) -- treated as UTC, same
 	# convention `to_unix` already uses elsewhere in this codebase, so both
 	# sides of the comparison below stay timezone-aware and comparable.
 	now = datetime.datetime.now(datetime.UTC)
+	soon = now + datetime.timedelta(days=_TODO_UPCOMING_WINDOW_DAYS)
 	buckets: dict[str, list[dict]] = {
 		"overdue": [],
 		"no_deadline": [],
 		"upcoming": [],
+		"later": [],
 		"done": [],
 	}
 
@@ -412,25 +425,14 @@ def _categorize_tasks(tasks: list[dict]) -> dict[str, list[dict]]:
 			)
 			if deadline < now:
 				buckets["overdue"].append(task)
-			else:
+			elif deadline <= soon:
 				buckets["upcoming"].append(task)
+			else:
+				buckets["later"].append(task)
 
 	buckets["overdue"].sort(key=lambda t: t["exp_end_date"])
 	buckets["upcoming"].sort(key=lambda t: t["exp_end_date"])
 	return buckets
-
-
-def _debug_email_overrides() -> list[str]:
-	"""Parse `PMS_DEBUG_EMAIL_OVERRIDE` into a list.
-
-	Supports a single email or a comma-separated list (e.g.
-	"a@rtcamp.com,b@rtcamp.com"), so testing can be scoped to a handful of
-	people's projects instead of just one.
-	"""
-	raw = settings.PMS_DEBUG_EMAIL_OVERRIDE
-	if not raw:
-		return []
-	return [email.strip() for email in raw.split(",") if email.strip()]
 
 
 def _project_tab_url(project_id: str, tab: str) -> str:
@@ -442,6 +444,36 @@ def _project_tab_url(project_id: str, tab: str) -> str:
 	"""
 	base = str(settings.FRAPPE_BASE_URL).rstrip("/")
 	return f"{base}/next-pms/projects/{project_id}?tab={tab}"
+
+
+def _project_overview_url(project_id: str) -> str:
+	"""Build a link to the project's overview page (no specific tab) in Next PMS."""
+	base = str(settings.FRAPPE_BASE_URL).rstrip("/")
+	return f"{base}/next-pms/projects/{project_id}"
+
+
+def _link_button(text: str, url: str, action_id: str) -> dict:
+	"""Build an `actions` block with a single button linking out to `url`."""
+	return {
+		"type": "actions",
+		"elements": [
+			{
+				"type": "button",
+				"text": {"type": "plain_text", "text": text, "emoji": True},
+				"url": url,
+				"action_id": action_id,
+			}
+		],
+	}
+
+
+def _open_overview_button(project_id: str) -> dict:
+	"""Build an `actions` block with a button linking to the project overview page."""
+	return _link_button(
+		"🔗 Open Project Overview",
+		_project_overview_url(project_id),
+		"open_project_overview",
+	)
 
 
 def _header_block(text: str) -> dict:
@@ -546,13 +578,13 @@ def _format_task_row(task: dict, status_icon: str, link_url: str) -> list[dict]:
 	]
 
 
-def _format_task_section(
+def _format_todo_section(
 	title: str,
 	tasks: list[dict],
 	link_url: str,
 	llm_tip: str | None = None,
 ) -> list[dict]:
-	"""Build Block Kit sections for a project's todos or milestones.
+	"""Build Block Kit sections for a project's todos.
 
 	Returns one label+table (+ optional overflow note) per populated
 	bucket, so a large backlog can't overflow Slack's per-block limits even
@@ -568,14 +600,18 @@ def _format_task_section(
 	if not tasks:
 		return []
 
-	buckets = _categorize_tasks(tasks)
+	buckets = _categorize_todos(tasks)
 	blocks = [_header_block(f"{title} ({len(tasks)} total)")]
 
 	# 🔴/🟡/⚪ are used consistently across every audit section: red = needs
 	# action now, yellow = coming up, white = unknown/no data.
 	bucket_specs = [
 		("⚠️ *Overdue*", buckets["overdue"], "🔴"),
-		("🗓️ *Upcoming (nearest deadline first)*", buckets["upcoming"], "🟡"),
+		(
+			f"🗓️ *Upcoming (within {_TODO_UPCOMING_WINDOW_DAYS} days)*",
+			buckets["upcoming"],
+			"🟡",
+		),
 		("❓ *No deadline set*", buckets["no_deadline"], "⚪"),
 	]
 	for label, bucket_tasks, icon in bucket_specs:
@@ -591,6 +627,13 @@ def _format_task_section(
 	tips = []
 	if buckets["done"]:
 		tips.append(_quote(f"✅ {len(buckets['done'])} completed/cancelled"))
+	if buckets["later"]:
+		tips.append(
+			_quote(
+				f"{len(buckets['later'])} due later than "
+				f"{_TODO_UPCOMING_WINDOW_DAYS} days out"
+			),
+		)
 	if llm_tip:
 		tips.append(_quote(llm_tip))
 	else:
@@ -610,6 +653,181 @@ def _format_task_section(
 					"slippage risk.",
 				),
 			)
+	if tips:
+		blocks.append(
+			{"type": "section", "text": {"type": "mrkdwn", "text": "\n\n".join(tips)}}
+		)
+
+	return blocks
+
+
+# Milestones due further out than this aren't actionable yet, so they're
+# suppressed from the "upcoming" bucket rather than shown/flagged.
+_MILESTONE_SUPPRESS_DAYS = 365
+
+
+def _categorize_milestones(milestones: list[dict]) -> dict[str, list[dict]]:
+	"""Bucket milestones into overdue-but-open, upcoming, far-out, no-deadline, done.
+
+	Unlike todos, a milestone whose planned completion date has already
+	passed while still marked incomplete ("overdue_open") is escalated as
+	its own bucket rather than folded into a generic overdue list -- a
+	stronger signal for a retainer than a todo running late. Anything due
+	more than `_MILESTONE_SUPPRESS_DAYS` out is suppressed into "far_out"
+	rather than shown as upcoming, since it isn't actionable yet.
+	"""
+	now = datetime.datetime.now(datetime.UTC)
+	horizon = now + datetime.timedelta(days=_MILESTONE_SUPPRESS_DAYS)
+	buckets: dict[str, list[dict]] = {
+		"overdue_open": [],
+		"upcoming": [],
+		"far_out": [],
+		"no_deadline": [],
+		"done": [],
+	}
+
+	for milestone in milestones:
+		if milestone["status"] in TASK_CLOSED_STATUSES:
+			buckets["done"].append(milestone)
+			continue
+
+		exp_end_date = milestone.get("exp_end_date")
+		if not exp_end_date:
+			buckets["no_deadline"].append(milestone)
+		else:
+			deadline = datetime.datetime.fromisoformat(exp_end_date).replace(
+				tzinfo=datetime.UTC
+			)
+			if deadline < now:
+				buckets["overdue_open"].append(milestone)
+			elif deadline <= horizon:
+				buckets["upcoming"].append(milestone)
+			else:
+				buckets["far_out"].append(milestone)
+
+	buckets["overdue_open"].sort(key=lambda m: m["exp_end_date"])
+	buckets["upcoming"].sort(key=lambda m: m["exp_end_date"])
+	return buckets
+
+
+def _has_milestone_in_month_window(milestones: list[dict]) -> bool:
+	"""Check whether any milestone (any status) lands in the current or next month.
+
+	Flags a retainer coverage gap, not a per-item overdue/upcoming
+	condition, so it's checked across the full unfiltered list rather than
+	one of `_categorize_milestones`'s buckets.
+	"""
+	now = datetime.datetime.now(datetime.UTC).date()
+	next_month = now.month + 1
+	next_year = now.year
+	if next_month > 12:
+		next_month = 1
+		next_year += 1
+	month_year_pairs = {(now.year, now.month), (next_year, next_month)}
+
+	for milestone in milestones:
+		exp_end_date = milestone.get("exp_end_date")
+		if not exp_end_date:
+			continue
+		due = datetime.date.fromisoformat(exp_end_date[:10])
+		if (due.year, due.month) in month_year_pairs:
+			return True
+	return False
+
+
+def _format_milestone_section(
+	milestones: list[dict],
+	link_url: str,
+	*,
+	is_retainer: bool,
+	llm_tip: str | None = None,
+) -> list[dict]:
+	"""Build Block Kit sections for a project's milestones.
+
+	Milestones get their own bucketing (see `_categorize_milestones`)
+	rather than reusing the todo one: a completion date that's passed while
+	still marked Open is escalated separately, and anything due more than
+	`_MILESTONE_SUPPRESS_DAYS` out is suppressed rather than shown. For
+	retainer projects (`is_retainer`), also flags when no milestone at all
+	lands in the current or next calendar month -- a coverage gap that
+	matters even when `milestones` is empty, so (unlike every other audit
+	section) this doesn't return `[]` just because there's no data, when
+	the project is a retainer.
+	"""
+	title = "📌 Milestones"
+	if not milestones:
+		if is_retainer:
+			return [
+				_header_block(title),
+				{
+					"type": "section",
+					"text": {
+						"type": "mrkdwn",
+						"text": _quote(
+							"⚠️ No milestones exist for this retainer project -- "
+							"nothing scheduled for this month or next."
+						),
+					},
+				},
+				_link_button("➕ Add Milestone", link_url, "add_milestone"),
+			]
+		return []
+
+	buckets = _categorize_milestones(milestones)
+	blocks = [_header_block(f"{title} ({len(milestones)} total)")]
+
+	if is_retainer and not _has_milestone_in_month_window(milestones):
+		blocks.append(
+			{
+				"type": "section",
+				"text": {
+					"type": "mrkdwn",
+					"text": _quote(
+						"⚠️ No milestone scheduled for this month or next month."
+					),
+				},
+			},
+		)
+
+	bucket_specs = [
+		("⏰ *Completion date passed, still open*", buckets["overdue_open"], "🔴"),
+		(
+			f"🗓️ *Upcoming (within {_MILESTONE_SUPPRESS_DAYS} days)*",
+			buckets["upcoming"],
+			"🟡",
+		),
+		("❓ *No deadline set*", buckets["no_deadline"], "⚪"),
+	]
+	for label, bucket_milestones, icon in bucket_specs:
+		blocks.extend(
+			_format_table_bucket(
+				label,
+				bucket_milestones,
+				_TASK_TABLE_HEADER,
+				lambda m, icon=icon: _format_task_row(m, icon, link_url),
+			),
+		)
+
+	tips = []
+	if buckets["done"]:
+		tips.append(_quote(f"✅ {len(buckets['done'])} completed"))
+	if buckets["far_out"]:
+		tips.append(
+			_quote(
+				f"{len(buckets['far_out'])} due more than "
+				f"{_MILESTONE_SUPPRESS_DAYS} days out"
+			),
+		)
+	if llm_tip:
+		tips.append(_quote(llm_tip))
+	elif buckets["overdue_open"]:
+		tips.append(
+			_quote(
+				f"Tip: {len(buckets['overdue_open'])} milestone(s) have passed "
+				"their planned completion date and are still open — mark "
+				"them complete or push the date so reporting stays accurate.",
+			),
+		)
 	if tips:
 		blocks.append(
 			{"type": "section", "text": {"type": "mrkdwn", "text": "\n\n".join(tips)}}
@@ -673,7 +891,7 @@ def _format_risk_section(
 	Risks have no due-date field in Frappe, so they're grouped by status
 	and, within "open", sorted by risk level rather than by deadline.
 	Returns one label+table (+ optional overflow note) per populated
-	bucket, matching `_format_task_section`. `link_url` is the project's
+	bucket, matching `_format_todo_section`. `link_url` is the project's
 	Risks tab, applied to every row. `llm_tip` behaves the same way:
 	replaces the hardcoded tip when present, otherwise the hardcoded
 	fallback still runs. Returns `[]` when there's no data at all -- the
@@ -708,7 +926,7 @@ def _format_risk_section(
 
 	tips = [
 		_quote(
-			"Note: risks don't carry a due date in Frappe, so they're prioritized by "
+			"Note: risks don't carry a due date in Next PMS, so they're prioritized by "
 			"level instead of deadline.",
 		),
 	]
@@ -825,7 +1043,7 @@ def _format_github_issues_section(
 	numbers on screen always add up. Returns one label+table (+ optional
 	overflow note) per populated bucket, since a busy repo can have every
 	bucket near the item cap at once. `llm_tip` behaves as in
-	`_format_task_section`. Returns `[]` when there are no open,
+	`_format_todo_section`. Returns `[]` when there are no open,
 	status-tagged issues at all -- the whole section is omitted rather
 	than shown as an empty placeholder.
 	"""
@@ -894,6 +1112,168 @@ def _format_github_issues_section(
 	return blocks
 
 
+# Retainer/budget-burn thresholds, per the audit spec: escalate hours
+# consumed above 80% while more than a week remains in the cycle, and
+# budget burn running more than 20 points ahead of schedule burn.
+_RETAINER_HOURS_CONSUMED_THRESHOLD = 80
+_RETAINER_CYCLE_CLOSE_BUFFER_DAYS = 7
+_BUDGET_BURN_AHEAD_THRESHOLD = 20
+
+
+def _current_budget_cycle(budget_rows: list[dict]) -> dict | None:
+	"""Pick the `Project Budget` cycle to evaluate: today's, or the latest past one.
+
+	`Project Budget` rows are a child table on Project (field
+	`custom_project_budget_hours`) -- they arrive nested in the full
+	project document from `get_project_by_id`, no separate fetch needed.
+	"""
+	if not budget_rows:
+		return None
+
+	today = datetime.datetime.now(datetime.UTC).date()
+	for row in budget_rows:
+		start, end = row.get("start_date"), row.get("end_date")
+		if not start or not end:
+			continue
+		start_date = datetime.date.fromisoformat(start)
+		end_date = datetime.date.fromisoformat(end)
+		if start_date <= today <= end_date:
+			return row
+
+	dated = [row for row in budget_rows if row.get("end_date")]
+	return max(dated, key=lambda row: row["end_date"]) if dated else None
+
+
+def _format_budget_section(project_detail: dict, *, is_retainer: bool) -> list[dict]:
+	"""Flag retainer hours-consumed and budget burn running ahead of schedule.
+
+	"Schedule burn" is approximated as elapsed time within the cycle's
+	start/end dates -- no task-completion-based measure of schedule
+	progress exists yet, so this is an assumption to revisit with the ERP
+	owner if a different definition is wanted. Returns `[]` when the
+	project has no `Project Budget` cycle to evaluate at all.
+	"""
+	cycle = _current_budget_cycle(project_detail.get(PROJECT_BUDGET_FIELD) or [])
+	if not cycle:
+		return []
+
+	hours_purchased = cycle.get("hours_purchased") or 0
+	if hours_purchased <= 0:
+		return []
+	consumed_hours = cycle.get("consumed_hours") or 0
+	remaining_hours = cycle.get("remaining_hours")
+	if remaining_hours is None:
+		remaining_hours = hours_purchased - consumed_hours
+	consumed_pct = consumed_hours / hours_purchased * 100
+
+	today = datetime.datetime.now(datetime.UTC).date()
+	start_date = cycle.get("start_date")
+	end_date = cycle.get("end_date")
+	start = datetime.date.fromisoformat(start_date) if start_date else None
+	end = datetime.date.fromisoformat(end_date) if end_date else None
+
+	lines = [
+		f"⏱️ Hours consumed this cycle: *{consumed_hours:.1f} / {hours_purchased:.1f}* "
+		f"({consumed_pct:.0f}%)"
+	]
+
+	if is_retainer and end:
+		days_left = (end - today).days
+		if (
+			consumed_pct > _RETAINER_HOURS_CONSUMED_THRESHOLD
+			and days_left > _RETAINER_CYCLE_CLOSE_BUFFER_DAYS
+		):
+			lines.append(
+				_quote(
+					f"🔴 {consumed_pct:.0f}% of this cycle's hours are consumed with "
+					f"{days_left} day(s) still left in the cycle."
+				),
+			)
+		if today > end and remaining_hours > 0 and not cycle.get("sales_invoice"):
+			lines.append(
+				_quote(
+					f"🔴 Cycle closed on {cycle['end_date']} with "
+					f"{remaining_hours:.1f} unbilled hour(s) remaining and no linked "
+					"sales invoice."
+				),
+			)
+
+	if start and end and end > start:
+		elapsed_fraction = (today - start).days / (end - start).days
+		schedule_pct = min(100.0, max(0.0, elapsed_fraction * 100))
+		burn_gap = consumed_pct - schedule_pct
+		if burn_gap > _BUDGET_BURN_AHEAD_THRESHOLD:
+			lines.append(
+				_quote(
+					f"🟡 Budget burn ({consumed_pct:.0f}%) is running "
+					f"{burn_gap:.0f} point(s) ahead of schedule burn "
+					f"({schedule_pct:.0f}%)."
+				),
+			)
+
+	return [
+		_header_block("💰 Budget"),
+		{"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}},
+	]
+
+
+# One line per role, framed around the concrete consequence of the gap
+# rather than a flat "field X is missing" -- matches the business-value
+# framing used elsewhere in this bot (see pms-slack-automation-context).
+_TEAM_ROLE_GAP_MESSAGES = {
+	"Project Manager": (
+		"🧑‍💼 *No Project Manager assigned* — nobody owns escalations or "
+		"client communication on this project."
+	),
+	"Lead Engineer": (
+		"🛠️ *No Lead Engineer assigned* — technical decisions and delivery "
+		"risk have no clear owner."
+	),
+	"Team members": (
+		"👥 *No team members beyond PM/Lead Engineer* — the project's roster "
+		"doesn't reflect who's actually doing the work."
+	),
+}
+
+
+def _format_team_section(
+	project_id: str, project_detail: dict, shared_emails: list[str]
+) -> list[dict]:
+	"""Flag whichever of Project Manager / Lead Engineer / Team members is missing.
+
+	Next PMS has no dedicated "team members" field -- its Members panel's
+	team list is actually everyone the project is shared with (`DocShare`),
+	minus the PM and Lead Engineer (who are shared too, but surfaced as
+	their own roles rather than counted as generic members). Names the
+	specific missing role(s), each framed around its concrete consequence
+	rather than a flat "field is missing" list, and links straight to the
+	project so fixing it is one click. Returns `[]` when PM, Lead Engineer,
+	and at least one team member are all present.
+	"""
+	pm_email = project_detail.get(PROJECT_MANAGER_FIELD)
+	em_email = project_detail.get(PROJECT_ENGINEERING_MANAGER_FIELD)
+	excluded = {email for email in (pm_email, em_email) if email}
+	team_members = [email for email in shared_emails if email not in excluded]
+
+	missing = []
+	if not pm_email:
+		missing.append("Project Manager")
+	if not em_email:
+		missing.append("Lead Engineer")
+	if not team_members:
+		missing.append("Team members")
+
+	if not missing:
+		return []
+
+	lines = [_quote(_TEAM_ROLE_GAP_MESSAGES[role]) for role in missing]
+	return [
+		_header_block("👥 Team"),
+		{"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}},
+		_open_overview_button(project_id),
+	]
+
+
 def _format_audit_header(
 	project: dict,
 	project_detail: dict,
@@ -916,7 +1296,7 @@ def _format_audit_header(
 		lines.append(f"🔌 GitHub: {repo_list}")
 	else:
 		lines.append(
-			_quote("⚠️ No GitHub repository connected to this project in Frappe.")
+			_quote("⚠️ No GitHub repository connected to this project in Next PMS.")
 		)
 
 	blocks.append(
@@ -925,13 +1305,34 @@ def _format_audit_header(
 	return blocks
 
 
+def _todo_title(todo: dict) -> str:
+	"""Pick a display title: `custom_title` if set, else derived from the description.
+
+	`custom_title` is a NextPMS-specific field on `ToDo` and is expected to
+	be populated, but falls back to the first line/sentence of the
+	description (stripped of HTML) for any older record that predates it,
+	rather than showing the full text truncated mid-sentence.
+	"""
+	custom_title = (todo.get("custom_title") or "").strip()
+	if custom_title:
+		return custom_title
+
+	description = _strip_html(todo.get("description") or "")
+	first_line = description.splitlines()[0].strip() if description else ""
+	if not first_line:
+		return "(no description)"
+	sentence_end = first_line.find(". ")
+	if sentence_end != -1:
+		return first_line[:sentence_end].strip()
+	return first_line
+
+
 def _normalize_todo(todo: dict) -> dict:
 	"""Normalize a standalone ToDo record into the Task-like shape formatters expect."""
 	status = todo.get("status") or ""
-	description = _strip_html(todo.get("description") or "") or "(no description)"
 	return {
 		"name": todo["name"],
-		"subject": description,
+		"subject": _todo_title(todo),
 		"status": TODO_STATUS_TO_TASK_STATUS.get(status, status),
 		"is_milestone": 0,
 		"exp_end_date": todo.get("date"),
@@ -944,7 +1345,8 @@ def _normalize_pti_milestone(pti: dict) -> dict:
 	PTI uses different field names from Task: `title` instead of `subject`,
 	`planned_end_date` instead of `exp_end_date`, and `is_complete` (0/1)
 	instead of a `status` string. We derive a status string so the existing
-	`_format_task_section` / `_categorize_tasks` logic works unchanged:
+	`_format_milestone_section` / `_categorize_milestones` logic works
+	unchanged:
 	- `actual_end_date` set → "Completed" (it was actually finished)
 	- `is_complete=1` but no actual end date → "Completed"
 	- otherwise → "Open"
@@ -968,6 +1370,7 @@ def _format_audit_report(
 	milestones: list[dict],
 	todos: list[dict],
 	risks: list[dict],
+	shared_emails: list[str],
 	github_repos: list[dict],
 	github_issues: list[dict] | None,
 	tips: dict,
@@ -990,6 +1393,9 @@ def _format_audit_report(
 	section never leaves a stray or doubled-up divider behind.
 	"""
 	project_id = project["name"]
+	billing_type = project_detail.get(PROJECT_BILLING_TYPE_FIELD)
+	is_retainer = billing_type == RETAINER_BILLING_TYPE
+	is_active = project["status"] not in PROJECT_SUPPRESSED_STATUSES
 
 	github_section: list[dict] = []
 	if github_repos:
@@ -1012,13 +1418,13 @@ def _format_audit_report(
 	sections = [
 		list(_format_audit_header(project, project_detail, github_repos)),
 		_format_missing_fields_section(project),
-		_format_task_section(
-			"📌 Milestones",
+		_format_milestone_section(
 			milestones,
 			_project_tab_url(project_id, "calendar"),
-			tips.get("milestonesTip"),
+			is_retainer=is_retainer,
+			llm_tip=tips.get("milestonesTip"),
 		),
-		_format_task_section(
+		_format_todo_section(
 			"✅ Todos",
 			todos,
 			_project_tab_url(project_id, "to-do"),
@@ -1027,6 +1433,10 @@ def _format_audit_report(
 		_format_risk_section(
 			risks, _project_tab_url(project_id, "risks"), tips.get("risksTip")
 		),
+		_format_budget_section(project_detail, is_retainer=is_retainer),
+		_format_team_section(project_id, project_detail, shared_emails)
+		if is_active
+		else [],
 		github_section,
 		[
 			{
@@ -1035,7 +1445,7 @@ def _format_audit_report(
 					{
 						"type": "mrkdwn",
 						"text": (
-							"_Pulled live from Frappe. Re-run `/pms audit` "
+							"_Pulled live from Next PMS. Re-run `/pms audit` "
 							"after updating records to refresh this report._"
 						),
 					},
@@ -1113,41 +1523,29 @@ async def _build_audit_report(
 ) -> tuple[str, list[dict]]:
 	"""Fetch a project's milestones, todos, risks, and GitHub links, then format them.
 
-	Milestone priority:
-	1. Project Timeline Item (type=Milestone) -- the real source that
-		powers ?tab=calendar in Next PMS.
-	2. Task records with is_milestone=1 -- legacy fallback for older
-		projects that predate the PTI doctype.
-	Whichever source returns records is used exclusively; both are never
-	combined (they'd produce duplicates).
+	Milestones come exclusively from `Project Timeline Item` (type=Milestone)
+	-- the doctype that actually powers ?tab=calendar in Next PMS. Todos come
+	exclusively from the standalone `ToDo` doctype -- `Task` records are no
+	longer queried for either milestones or todos.
 	"""
 	project_id = project["name"]
 	(
 		project_detail,
 		pti_milestones,
-		tasks,
 		standalone_todos,
 		risks,
+		shared_emails,
 	) = await asyncio.gather(
 		frappe_service.get_project_by_id(project_id),
 		frappe_service.get_milestones_by_project(project_id),
-		frappe_service.get_tasks_by_project(project_id),
 		frappe_service.get_todos_by_project(project_id),
 		frappe_service.get_risks_by_project(project_id),
+		frappe_service.get_project_shares(project_id),
 	)
 	project_detail = project_detail or {}
 
-	# Use PTI milestones if any exist; fall back to Task.is_milestone records.
-	if pti_milestones:
-		milestones = [_normalize_pti_milestone(pti) for pti in pti_milestones]
-		todos = [task for task in tasks if not task.get("is_milestone")] + [
-			_normalize_todo(todo) for todo in standalone_todos
-		]
-	else:
-		milestones = [task for task in tasks if task.get("is_milestone")]
-		todos = [task for task in tasks if not task.get("is_milestone")] + [
-			_normalize_todo(todo) for todo in standalone_todos
-		]
+	milestones = [_normalize_pti_milestone(pti) for pti in pti_milestones]
+	todos = [_normalize_todo(todo) for todo in standalone_todos]
 
 	connections = project_detail.get("custom_project_repository_connections") or []
 	repo_names = [
@@ -1175,10 +1573,28 @@ async def _build_audit_report(
 		milestones,
 		todos,
 		risks,
+		shared_emails,
 		github_repos,
 		github_issues,
 		tips,
 	)
+
+
+async def _resolve_delivery_manager_override(
+	frappe_service: FrappeService, email: str, project_filter: str
+) -> dict | None:
+	"""Let a Delivery Manager audit any project by exact ID, even if they're not its PM.
+
+	Only called as a fallback when the requester isn't already the PM of a
+	matching project (the common case) -- the role lookup costs an extra
+	Frappe call, so it's skipped entirely unless needed. Requires an exact
+	project ID match rather than the fuzzy name search PM-scoped lookups
+	get, since there's no bounded "my projects" list to search within.
+	"""
+	roles = await frappe_service.get_user_roles(email)
+	if DELIVERY_MANAGER_ROLE not in roles:
+		return None
+	return await frappe_service.get_project_by_id(project_filter)
 
 
 @inngest_client.create_function(
@@ -1189,11 +1605,16 @@ async def _build_audit_report(
 async def handle_pms_command(ctx: inngest.Context):
 	"""Inngest function to handle the Slack /pms slash command.
 
-	Resolves the requesting Slack user's email (or uses
-	`settings.PMS_DEBUG_EMAIL_OVERRIDE` if set, for local testing), looks up
-	their Frappe PMS projects by matching that email against the project
-	manager field, and replies via the slash command's `response_url` with
-	the project list, a missing-fields report, or a full per-project audit.
+	Resolves the requesting Slack user's email, looks up their Frappe PMS
+	projects by matching that email against the project manager field, and
+	replies via the slash command's `response_url` with the project list, a
+	missing-fields report, or a full per-project audit.
+
+	For "audit" specifically: if `project_filter` doesn't match any of the
+	requester's own PM'd projects, and they hold the Delivery Manager Frappe
+	role, they can still audit that project by its exact ID (see
+	`_resolve_delivery_manager_override`) -- lets a Delivery Manager check
+	in on any project without being its PM.
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
@@ -1213,15 +1634,8 @@ async def handle_pms_command(ctx: inngest.Context):
 	project_filter = event_data.get("project_filter")
 	response_url = str(event_data["response_url"])
 
-	debug_emails = _debug_email_overrides()
-	if debug_emails:
-		# A single slash-command invocation has one caller -- if multiple
-		# debug emails are configured (for the bulk-audit override), just
-		# use the first for this per-user command flow.
-		email = debug_emails[0]
-	else:
-		notifier = SlackNotifierService()
-		email = notifier.get_user_email(user_id)
+	notifier = SlackNotifierService()
+	email = notifier.get_user_email(user_id)
 
 	blocks: list[dict] | None = None
 
@@ -1233,6 +1647,13 @@ async def handle_pms_command(ctx: inngest.Context):
 
 		if project_filter:
 			projects = _filter_projects(projects, str(project_filter))
+
+		if not projects and project_filter and subcommand == "audit":
+			override_project = await _resolve_delivery_manager_override(
+				frappe_service, email, str(project_filter)
+			)
+			if override_project:
+				projects = [override_project]
 
 		if project_filter and not projects:
 			text = (
@@ -1370,15 +1791,7 @@ async def run_all_project_audits(ctx: inngest.Context) -> dict:
 			return {"status": "skipped", "reason": "job_failed"}
 
 	frappe_service = FrappeService()
-	# NOTE: remove this override before the real production rollout. Reuses
-	# the existing PMS_DEBUG_EMAIL_OVERRIDE setting (same one handle_pms_command
-	# already uses) to scope test runs to a handful of people's projects
-	# instead of every billable project at the company. If this is ever left
-	# set in a real deployment, it would silently limit every future
-	# bulk-audit run to just these emails, not just the test run.
-	projects = await frappe_service.get_billable_open_projects(
-		manager_emails=_debug_email_overrides() or None,
-	)
+	projects = await frappe_service.get_billable_open_projects()
 
 	steps = [
 		(lambda project=project: _invoke_project_audit(project)) for project in projects
