@@ -33,7 +33,7 @@ def _get_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
 		RuntimeError: If engine initialization fails.
 
 	"""
-	global _analyzer, _anonymizer  # noqa: PLW0603
+	global _analyzer, _anonymizer
 
 	if _analyzer is not None and _anonymizer is not None:
 		return _analyzer, _anonymizer

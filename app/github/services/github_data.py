@@ -4,7 +4,7 @@ import httpx
 
 from app.core.adapters import redis_client
 from app.core.config import settings
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, InternalServerError
 from app.github.query import (
 	get_audit_issue_fetch_query,
 	get_issue_fetch_query,
@@ -91,8 +91,9 @@ class GitHubDataService:
 							"GitHub API unauthorized/forbidden after retry",
 						)
 
-					raise Exception(
-						f"GitHub API error: {response.status_code} - {response.text}",
+					raise InternalServerError(
+						f"{response.status_code} - {response.text}",
+						"GitHub API error",
 					)
 
 				data = response.json()
@@ -170,8 +171,9 @@ class GitHubDataService:
 							"GitHub API unauthorized/forbidden after retry",
 						)
 
-					raise Exception(
-						f"GitHub API error: {response.status_code} - {response.text}",
+					raise InternalServerError(
+						f"{response.status_code} - {response.text}",
+						"GitHub API error",
 					)
 
 				data = response.json()

@@ -39,7 +39,7 @@ async def refresh_github_access_token(ctx: inngest.Context) -> dict:
 			auth = GitHubAuthService()
 			await auth.get_access_token(force_refresh=True)
 			return {"status": "refreshed"}
-		except Exception as e:  # noqa: BLE001 - surface to Inngest logs
+		except Exception as e:
 			ctx.logger.error(f"Token refresh failed: {e}")
 			raise
 	else:

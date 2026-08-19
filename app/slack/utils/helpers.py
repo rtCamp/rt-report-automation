@@ -1108,8 +1108,11 @@ def _format_budget_section(project_detail: dict, *, is_retainer: bool) -> list[d
 	end = datetime.date.fromisoformat(end_date) if end_date else None
 
 	lines = [
-		f"⏱️ Hours consumed this cycle: *{consumed_hours:.1f} / {hours_purchased:.1f}* "
-		f"({consumed_pct:.0f}%)"
+		(
+			f"⏱️ Hours consumed this cycle: "
+			f"*{consumed_hours:.1f} / {hours_purchased:.1f}* "
+			f"({consumed_pct:.0f}%)"
+		)
 	]
 
 	if is_retainer and end:
