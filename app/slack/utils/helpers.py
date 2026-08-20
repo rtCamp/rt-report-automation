@@ -333,11 +333,11 @@ def _categorize_todos(tasks: list[dict]) -> dict[str, list[dict]]:
 	Monday audit cadence) -- anything further out lands in "later" so
 	nothing is silently dropped, mirroring `_categorize_github_issues`.
 	"""
-	# Frappe's dates arrive naive (no tz info) -- treated as UTC, same
-	# convention `to_unix` already uses elsewhere in this codebase, so both
-	# sides of the comparison below stay timezone-aware and comparable.
-	now = datetime.datetime.now(datetime.UTC)
-	soon = now + datetime.timedelta(days=_TODO_UPCOMING_WINDOW_DAYS)
+	# `exp_end_date` is a date-only Frappe field (no time component) --
+	# compared as calendar dates, not datetimes, so an item due today isn't
+	# marked overdue for most of the day it's actually still due.
+	today = datetime.datetime.now(datetime.UTC).date()
+	soon = today + datetime.timedelta(days=_TODO_UPCOMING_WINDOW_DAYS)
 	buckets: dict[str, list[dict]] = {
 		"overdue": [],
 		"no_deadline": [],
@@ -355,10 +355,8 @@ def _categorize_todos(tasks: list[dict]) -> dict[str, list[dict]]:
 		if not exp_end_date:
 			buckets["no_deadline"].append(task)
 		else:
-			deadline = datetime.datetime.fromisoformat(exp_end_date).replace(
-				tzinfo=datetime.UTC
-			)
-			if deadline < now:
+			deadline = datetime.date.fromisoformat(exp_end_date[:10])
+			if deadline < today:
 				buckets["overdue"].append(task)
 			elif deadline <= soon:
 				buckets["upcoming"].append(task)
@@ -611,8 +609,11 @@ def _categorize_milestones(milestones: list[dict]) -> dict[str, list[dict]]:
 	more than `_MILESTONE_SUPPRESS_DAYS` out is suppressed into "far_out"
 	rather than shown as upcoming, since it isn't actionable yet.
 	"""
-	now = datetime.datetime.now(datetime.UTC)
-	horizon = now + datetime.timedelta(days=_MILESTONE_SUPPRESS_DAYS)
+	# `exp_end_date` is a date-only Frappe field -- compared as calendar
+	# dates, not datetimes, so a milestone due today isn't marked overdue
+	# for most of the day it's actually still due.
+	today = datetime.datetime.now(datetime.UTC).date()
+	horizon = today + datetime.timedelta(days=_MILESTONE_SUPPRESS_DAYS)
 	buckets: dict[str, list[dict]] = {
 		"overdue_open": [],
 		"upcoming": [],
@@ -630,10 +631,8 @@ def _categorize_milestones(milestones: list[dict]) -> dict[str, list[dict]]:
 		if not exp_end_date:
 			buckets["no_deadline"].append(milestone)
 		else:
-			deadline = datetime.datetime.fromisoformat(exp_end_date).replace(
-				tzinfo=datetime.UTC
-			)
-			if deadline < now:
+			deadline = datetime.date.fromisoformat(exp_end_date[:10])
+			if deadline < today:
 				buckets["overdue_open"].append(milestone)
 			elif deadline <= horizon:
 				buckets["upcoming"].append(milestone)
@@ -1047,11 +1046,10 @@ def _format_github_issues_section(
 	return blocks
 
 
-# Retainer/budget-burn thresholds, per the audit spec: escalate hours
-# consumed above 80% while more than a week remains in the cycle, and
-# budget burn running more than 20 points ahead of schedule burn.
+# Retainer/budget-burn thresholds: escalate hours consumed above 80% any
+# time before cycle close, and budget burn more than 20 points ahead of
+# schedule burn.
 _RETAINER_HOURS_CONSUMED_THRESHOLD = 80
-_RETAINER_CYCLE_CLOSE_BUFFER_DAYS = 7
 _BUDGET_BURN_AHEAD_THRESHOLD = 20
 
 
@@ -1075,8 +1073,15 @@ def _current_budget_cycle(budget_rows: list[dict]) -> dict | None:
 		if start_date <= today <= end_date:
 			return row
 
-	dated = [row for row in budget_rows if row.get("end_date")]
-	return max(dated, key=lambda row: row["end_date"]) if dated else None
+	# No cycle covers today -- fall back to the most recently *closed* one
+	# (end_date in the past), never a not-yet-started future cycle, which
+	# would otherwise hide the real closed cycle's unbilled-hours warning.
+	past = [
+		row
+		for row in budget_rows
+		if row.get("end_date") and datetime.date.fromisoformat(row["end_date"]) < today
+	]
+	return max(past, key=lambda row: row["end_date"]) if past else None
 
 
 def _format_budget_section(project_detail: dict, *, is_retainer: bool) -> list[dict]:
@@ -1117,10 +1122,7 @@ def _format_budget_section(project_detail: dict, *, is_retainer: bool) -> list[d
 
 	if is_retainer and end:
 		days_left = (end - today).days
-		if (
-			consumed_pct > _RETAINER_HOURS_CONSUMED_THRESHOLD
-			and days_left > _RETAINER_CYCLE_CLOSE_BUFFER_DAYS
-		):
+		if consumed_pct > _RETAINER_HOURS_CONSUMED_THRESHOLD and today <= end:
 			lines.append(
 				_quote(
 					f"🔴 {consumed_pct:.0f}% of this cycle's hours are consumed with "
@@ -1312,6 +1314,8 @@ def _format_audit_report(
 	github_repos: list[dict],
 	github_issues: list[dict] | None,
 	tips: dict,
+	*,
+	project_detail_unavailable: bool = False,
 ) -> tuple[str, list[dict]]:
 	"""Build the /pms audit response as fallback text plus Block Kit blocks.
 
@@ -1320,9 +1324,15 @@ def _format_audit_report(
 	found nothing) -- these render as a distinct "couldn't fetch" section
 	so a transient GitHub outage doesn't get mistaken for "no open issues"
 	(genuinely zero issues still omits the section like everything else).
-	`tips` holds LLM-generated copy (`milestonesTip`/`todosTip`/`risksTip`/
-	`githubTip`, any of which may be absent) -- empty dict falls back to
-	hardcoded tips.
+	`project_detail_unavailable` is the same idea for the project document
+	itself: when its fetch failed, `project_detail` arrives as `{}` same as
+	a real (impossible) empty document would, so without this flag every
+	field derived from it -- missing fields, budget, team, RAG status,
+	GitHub repo -- would misreport as "nothing set" instead of "couldn't
+	check." Those sections are skipped entirely and replaced with one
+	explicit warning instead. `tips` holds LLM-generated copy
+	(`milestonesTip`/`todosTip`/`risksTip`/`githubTip`, any of which may be
+	absent) -- empty dict falls back to hardcoded tips.
 
 	Each section (Milestones/Todos/Risks/GitHub Issues) is entirely
 	omitted -- no header, no placeholder text -- when it has no data at
@@ -1353,9 +1363,27 @@ def _format_audit_report(
 				github_issues, tips.get("githubTip")
 			)
 
+	project_detail_warning: list[dict] = []
+	if project_detail_unavailable:
+		project_detail_warning = [
+			{
+				"type": "section",
+				"text": {
+					"type": "mrkdwn",
+					"text": _quote(
+						"⚠️ Could not load this project's details from Next PMS -- "
+						"Missing Fields, Budget, and Team are skipped below (not "
+						"actually empty, just unavailable right now). Re-run "
+						"`/pms audit` to retry."
+					),
+				},
+			},
+		]
+
 	sections = [
 		list(_format_audit_header(project, project_detail, github_repos)),
-		_format_missing_fields_section(project),
+		project_detail_warning,
+		[] if project_detail_unavailable else _format_missing_fields_section(project),
 		_format_milestone_section(
 			milestones,
 			_project_tab_url(project_id, "calendar"),
@@ -1371,10 +1399,12 @@ def _format_audit_report(
 		_format_risk_section(
 			risks, _project_tab_url(project_id, "risks"), tips.get("risksTip")
 		),
-		_format_budget_section(project_detail, is_retainer=is_retainer),
-		_format_team_section(project_id, project_detail, shared_emails)
-		if is_active
-		else [],
+		[]
+		if project_detail_unavailable
+		else _format_budget_section(project_detail, is_retainer=is_retainer),
+		[]
+		if project_detail_unavailable or not is_active
+		else _format_team_section(project_id, project_detail, shared_emails),
 		github_section,
 		[
 			{
@@ -1480,6 +1510,10 @@ async def _build_audit_report(
 		frappe_service.get_risks_by_project(project_id),
 		frappe_service.get_project_shares(project_id),
 	)
+	# get_project_by_id returns None specifically on a failed/missing fetch
+	# (never a real empty document) -- tracked separately so a fetch failure
+	# doesn't get silently rendered as "every field is blank".
+	project_detail_unavailable = project_detail is None
 	project_detail = project_detail or {}
 
 	milestones = [_normalize_pti_milestone(pti) for pti in pti_milestones]
@@ -1515,6 +1549,7 @@ async def _build_audit_report(
 		github_repos,
 		github_issues,
 		tips,
+		project_detail_unavailable=project_detail_unavailable,
 	)
 
 

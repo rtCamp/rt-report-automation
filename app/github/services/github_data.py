@@ -119,8 +119,11 @@ class GitHubDataService:
 		"""Fetch open issues across one or more repositories for /pms audit.
 
 		Unlike `fetch_repository_issues`, this isn't scoped to a date range
-		or a single repository, and it isn't paginated -- `first: 100` is
-		GitHub's max page size, which doubles as the audit's item cap.
+		or a single repository -- but it is paginated the same way, since
+		search results are returned in GitHub's relevance order rather than
+		urgency order, so the blocked/overdue issues the audit is meant to
+		escalate could otherwise fall past the first page and be silently
+		missed.
 
 		Args:
 			repos (list[tuple[str, str]]): (owner, repo) pairs to search
@@ -138,6 +141,8 @@ class GitHubDataService:
 
 		search_query = get_multi_repo_open_issues_search_query(repos)
 		query_issues = get_audit_issue_fetch_query()
+		issue_nodes: list[dict] = []
+		issues_pagination_cursor: str | None = None
 		gh_access_token = await self.auth.get_access_token()
 		retried_auth = False
 
@@ -147,7 +152,10 @@ class GitHubDataService:
 					str(settings.GITHUB_API_GQL_ENDPOINT),
 					json={
 						"query": query_issues,
-						"variables": {"search_query": search_query},
+						"variables": {
+							"search_query": search_query,
+							"after": issues_pagination_cursor,
+						},
 					},
 					headers={"Authorization": f"Bearer {gh_access_token}"},
 				)
@@ -177,9 +185,18 @@ class GitHubDataService:
 					)
 
 				data = response.json()
-				break
+				search_data = data.get("data", {}).get("search")
+				if not search_data:
+					break
 
-		issue_nodes = data.get("data", {}).get("search", {}).get("nodes", [])
+				issue_nodes.extend(search_data.get("nodes", []))
+
+				page_info = search_data.get("pageInfo", {})
+				if not page_info.get("hasNextPage"):
+					break
+
+				issues_pagination_cursor = page_info.get("endCursor")
+
 		return [_parse_audit_issue(node) for node in issue_nodes]
 
 

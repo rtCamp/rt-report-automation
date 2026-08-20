@@ -43,8 +43,9 @@ class FrappeService:
 		Returns:
 			list[dict]: Matching project records, each containing `name`,
 				`project_name`, `status`, and every fieldname in
-				``PROJECT_DETAIL_FIELDS``. Empty if none match or the
-				lookup fails.
+				``PROJECT_DETAIL_FIELDS``. Empty only if none match --
+				a non-2xx response raises instead of returning `[]`, so a
+				Frappe outage isn't indistinguishable from "no projects".
 
 		"""
 		fields = ["name", "project_name", "status"] + [
@@ -64,15 +65,7 @@ class FrappeService:
 					params=params,
 				)
 
-			if response.status_code != 200:
-				self.logger.warning(
-					"Error fetching projects for %s: %s %s",
-					email,
-					response.status_code,
-					response.text,
-				)
-				return []
-
+			response.raise_for_status()
 			return response.json().get("data", [])
 
 		except Exception as exc:
@@ -126,8 +119,9 @@ class FrappeService:
 			fields (list[str]): Fieldnames to return for each record.
 
 		Returns:
-			list[dict]: Matching records. Empty if none match or the
-				lookup fails.
+			list[dict]: Matching records. Empty only if none match -- a
+				non-2xx response raises instead of returning `[]`, so a
+				Frappe outage isn't indistinguishable from "no records".
 
 		"""
 		params = {
@@ -144,15 +138,7 @@ class FrappeService:
 					params=params,
 				)
 
-			if response.status_code != 200:
-				self.logger.warning(
-					"Error fetching %s: %s %s",
-					doctype,
-					response.status_code,
-					response.text,
-				)
-				return []
-
+			response.raise_for_status()
 			return response.json().get("data", [])
 
 		except Exception as exc:

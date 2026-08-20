@@ -163,8 +163,12 @@ def get_audit_issue_fetch_query() -> str:
 
 	"""
 	return """
-	query ($search_query: String!) {
-		search(query: $search_query, type: ISSUE, first: 100) {
+	query ($search_query: String!, $after: String) {
+		search(query: $search_query, type: ISSUE, first: 100, after: $after) {
+			pageInfo {
+			hasNextPage
+			endCursor
+			}
 			nodes {
 			... on Issue {
 				number

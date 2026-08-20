@@ -137,34 +137,43 @@ async def handle_pms_command(ctx: inngest.Context):
 	if not email:
 		text = "Couldn't resolve your email from your Slack profile."
 	else:
-		frappe_service = FrappeService()
-		projects = await frappe_service.get_projects_by_manager_email(email)
+		try:
+			frappe_service = FrappeService()
+			projects = await frappe_service.get_projects_by_manager_email(email)
 
-		if project_filter:
-			projects = _filter_projects(projects, str(project_filter))
+			if project_filter:
+				projects = _filter_projects(projects, str(project_filter))
 
-		if not projects and project_filter and subcommand == "audit":
-			override_project = await _resolve_delivery_manager_override(
-				frappe_service, email, str(project_filter)
-			)
-			if override_project:
-				projects = [override_project]
-
-		if project_filter and not projects:
-			text = (
-				f"🤷 No project matching '{project_filter}' found among your projects."
-			)
-		elif subcommand == "projects":
-			text, blocks = _format_projects_list(projects, user_id)
-		elif subcommand == "audit":
-			if len(projects) > 1:
-				text = _format_multiple_matches(projects, str(project_filter))
-			else:
-				text, blocks = await _build_audit_report(
-					ctx, frappe_service, projects[0]
+			if not projects and project_filter and subcommand == "audit":
+				override_project = await _resolve_delivery_manager_override(
+					frappe_service, email, str(project_filter)
 				)
-		else:
-			text = _format_missing_fields(projects)
+				if override_project:
+					projects = [override_project]
+
+			if project_filter and not projects:
+				text = (
+					f"🤷 No project matching '{project_filter}' found among "
+					"your projects."
+				)
+			elif subcommand == "projects":
+				text, blocks = _format_projects_list(projects, user_id)
+			elif subcommand == "audit":
+				if len(projects) > 1:
+					text = _format_multiple_matches(projects, str(project_filter))
+				else:
+					text, blocks = await _build_audit_report(
+						ctx, frappe_service, projects[0]
+					)
+			else:
+				text = _format_missing_fields(projects)
+		except Exception as exc:
+			# Frappe/GitHub calls now raise on a failed fetch rather than
+			# silently degrading to an empty/misleading result -- caught here
+			# so the requester still gets a reply instead of being stuck on
+			# the "Generating..." message until Inngest's retries run out.
+			ctx.logger.error(f"Error building /pms response for {user_id}: {exc}")
+			text = "⚠️ Something went wrong reaching Next PMS. Please try again shortly."
 
 	payload: dict[str, object] = {
 		"response_type": "in_channel",
@@ -175,7 +184,18 @@ async def handle_pms_command(ctx: inngest.Context):
 		payload["blocks"] = blocks
 
 	async with httpx.AsyncClient() as client:
-		await client.post(response_url, json=payload)
+		response = await client.post(response_url, json=payload)
+
+	if response.status_code >= 400:
+		# httpx doesn't raise for non-2xx by default -- an expired response_url
+		# or a rejected Block Kit payload would otherwise mark this job
+		# successful while the user is left on the "Generating..." message.
+		ctx.logger.error(
+			"Failed to deliver /pms response to Slack: %s %s",
+			response.status_code,
+			response.text,
+		)
+		response.raise_for_status()
 
 
 @inngest_client.create_function(
