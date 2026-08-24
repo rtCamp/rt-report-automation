@@ -128,9 +128,7 @@ class GitHubAuthService:
 
 		if access_token_value and access_token_expiry:
 			# Convert the ISO 8601 expiry string to a datetime object
-			expiry_dt = datetime.fromisoformat(
-				access_token_expiry.replace("Z", "+00:00"),
-			)
+			expiry_dt = datetime.fromisoformat(access_token_expiry)
 
 			# Calculate TTL in seconds with pre-refresh buffer
 			ttl_seconds = int(

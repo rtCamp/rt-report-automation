@@ -25,7 +25,7 @@ class InternalServerError(HTTPException):
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail={
 				"error": "Internal Server Error",
-				"message": f"{message}: {str(error)}",
+				"message": f"{message}: {error!s}",
 				"hint": hint,
 			},
 		)

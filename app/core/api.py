@@ -8,6 +8,7 @@ from app.google_docs.controller import router as google_docs_router
 from app.health.controller import router as health_router
 from app.inngest_proxy import inngest_proxy_router
 from app.llm import llm_router
+from app.slack import audit_router, slack_router
 
 
 def register_routes(app: FastAPI):
@@ -17,6 +18,10 @@ def register_routes(app: FastAPI):
 	- Health check routes: Public (no authentication required)
 	- LLM routes: Protected with API key authentication
 	- Google Docs routes: Protected with API key authentication
+	- PMS bulk audit route: Protected with API key authentication (pinged
+		by Frappe's scheduler, not a Slack request, so it uses this scheme
+		rather than Slack signature verification)
+	- Slack slash command routes: Protected with Slack signature verification
 
 	Authentication is enforced via the validate_api_key dependency which
 	requires the X-API-KEY header to be present and valid in all requests
@@ -45,3 +50,12 @@ def register_routes(app: FastAPI):
 		prefix=settings.API_PREFIX,
 		dependencies=[Depends(validate_api_key)],
 	)
+	app.include_router(
+		audit_router,
+		prefix=settings.API_PREFIX,
+		dependencies=[Depends(validate_api_key)],
+	)
+
+	# Slack slash commands: authenticated via Slack request signature
+	# verification (applied on the router itself), not the API key.
+	app.include_router(slack_router, prefix=settings.API_PREFIX)

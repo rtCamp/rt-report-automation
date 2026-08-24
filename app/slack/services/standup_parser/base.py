@@ -13,9 +13,12 @@ from app.slack.constants import (
 class BaseParser:
 	"""Base parser with shared utilities for text normalization and extraction."""
 
-	# Concrete parsers populate `question_patterns` with the phrases that map to the
-	# canonical STANDARD_QUESTIONS keys.
-	question_patterns: dict[str, list[str]] = {}
+	# Concrete parsers populate `question_patterns` (as an instance attribute in
+	# their own __init__) with the phrases that map to the canonical
+	# STANDARD_QUESTIONS keys. Annotation only, no default -- BaseParser is
+	# never instantiated directly, so there's no shared mutable dict to
+	# accidentally leak state between parser instances.
+	question_patterns: dict[str, list[str]]
 
 	def _normalize_text(self, text: str, *, preserve_newlines: bool = False) -> str:
 		"""Normalize Slack message text by removing formatting.

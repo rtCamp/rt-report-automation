@@ -58,7 +58,7 @@ async def summarization(ctx: inngest.Context) -> str | dict | list:
 		previous_report = event_data.get("previous_report")
 
 		if not validate(docs_data, list):
-			raise
+			raise TypeError(f"Expected list for 'data', got {type(docs_data).__name__}")
 
 		for content in docs_data:
 			validate(content, str)
