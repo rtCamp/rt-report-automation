@@ -310,7 +310,7 @@ async def run_all_project_audits(ctx: inngest.Context) -> dict:
 	frappe_service = FrappeService()
 	projects = await frappe_service.get_billable_open_projects()
 
-	if project_id:
+	if project_id is not None:
 		projects = [p for p in projects if p["name"] == project_id]
 
 	if dry_run:

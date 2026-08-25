@@ -111,12 +111,19 @@ async def handle_slash_command(request: Request):
 async def trigger_bulk_audit(project_id: str | None = None, *, dry_run: bool = False):
 	"""Queue a run of `run_all_project_audits` and acknowledge immediately."""
 	today = datetime.datetime.now(datetime.UTC).date()
+	# "project:"/"unscoped" prefixes keep a scoped run's dedup id structurally
+	# distinct from the daily unscoped run's -- a project literally named
+	# "all" would otherwise collide with a bare sentinel and dedupe against it
+	# for 24h.
+	scope = f"project:{project_id}" if project_id is not None else "unscoped"
 	try:
 		await inngest_client.send(
 			inngest.Event(
 				name="rt-report-automation/run_all_project_audits",
-				# Deterministic per (day, scope)
-				id=f"run-all-{today}-{project_id or 'all'}-{dry_run}",
+				# Deterministic per (day, scope): Inngest dedupes events sharing
+				# an id within its 24h window, so a same-day retry/overlap of
+				# the *same* scope is a no-op instead of a second full fan-out.
+				id=f"run-all-{today}-{scope}-dry:{dry_run}",
 				data={"project_id": project_id, "dry_run": dry_run},
 			),
 		)
