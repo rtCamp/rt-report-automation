@@ -1,5 +1,7 @@
 """Controller for the Slack /pms slash command and the PMS bulk audit trigger."""
 
+import datetime
+
 import inngest
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.logger import logger
@@ -98,14 +100,25 @@ async def handle_slash_command(request: Request):
 	description=(
 		"Meant to be pinged by Frappe's scheduler. Acknowledges immediately and "
 		"queues the actual audit-and-DM work to an Inngest function -- this "
-		"endpoint's only job is to send the ping onward."
+		"endpoint's only job is to send the ping onward. Pass `project_id` to "
+		"scope the run to a single project, and/or `dry_run=true` to preview "
+		"which projects would be audited without sending anything. Duplicate "
+		"full runs (same project scope, same UTC day) are deduped so a "
+		"scheduler retry or an overlapping manual trigger doesn't double-DM "
+		"every project manager."
 	),
 )
-async def trigger_bulk_audit():
+async def trigger_bulk_audit(project_id: str | None = None, *, dry_run: bool = False):
 	"""Queue a run of `run_all_project_audits` and acknowledge immediately."""
+	today = datetime.datetime.now(datetime.UTC).date()
 	try:
 		await inngest_client.send(
-			inngest.Event(name="rt-report-automation/run_all_project_audits"),
+			inngest.Event(
+				name="rt-report-automation/run_all_project_audits",
+				# Deterministic per (day, scope)
+				id=f"run-all-{today}-{project_id or 'all'}-{dry_run}",
+				data={"project_id": project_id, "dry_run": dry_run},
+			),
 		)
 	except Exception as e:
 		logger.error(f"Error sending run_all_project_audits event to Inngest: {e}")
