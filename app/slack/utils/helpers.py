@@ -516,6 +516,7 @@ def _format_todo_section(
 	tasks: list[dict],
 	link_url: str,
 	llm_tip: str | None = None,
+	milestones: list[dict] | None = None,
 ) -> list[dict]:
 	"""Build Block Kit sections for a project's todos.
 
@@ -528,9 +529,30 @@ def _format_todo_section(
 	hardcoded tips still run as a fallback so the section is never
 	silently missing guidance. Returns `[]` (no header, nothing) when
 	there's no data at all -- the whole section is omitted rather than
-	shown as an empty placeholder.
+	shown as an empty placeholder -- *unless* `milestones` has one still
+	open, in which case the section still renders (with a 0 count) just to
+	carry a nudge to add a todo for that milestone, since silence there
+	would read as "nothing to track" rather than "untracked work."
 	"""
 	if not tasks:
+		if milestones and any(
+			m["status"] not in TASK_CLOSED_STATUSES for m in milestones
+		):
+			return [
+				_header_block(f"{title} (0 total)"),
+				{
+					"type": "section",
+					"text": {
+						"type": "mrkdwn",
+						"text": _quote(
+							"💡 There's an open milestone but no todos tracked for "
+							"this project — consider adding one to break it down "
+							"into actionable steps."
+						),
+					},
+				},
+				_link_button("➕ Add Todo", link_url, "add_todo_for_milestone"),
+			]
 		return []
 
 	buckets = _categorize_todos(tasks)
@@ -1395,6 +1417,7 @@ def _format_audit_report(
 			todos,
 			_project_tab_url(project_id, "to-do"),
 			tips.get("todosTip"),
+			milestones=milestones,
 		),
 		_format_risk_section(
 			risks, _project_tab_url(project_id, "risks"), tips.get("risksTip")

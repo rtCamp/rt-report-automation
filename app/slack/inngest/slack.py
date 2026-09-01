@@ -265,10 +265,25 @@ async def run_all_project_audits(ctx: inngest.Context) -> dict:
 	sequential loop where a single project's failure could take down the
 	whole batch.
 
+	Args:
+		ctx (inngest.Context): The Inngest context containing event.data with:
+			- project_id (str | None): If set, scope the run to just this
+				project instead of every billable open project -- lets the
+				trigger endpoint be exercised safely against a single project.
+			- dry_run (bool): If true, resolve and log which project(s) would
+				be audited but skip invoking any audit-and-DM job -- lets the
+				trigger endpoint be validated with zero side effects.
+
 	Returns:
-		dict: `{"total": int, "sent": int, "skipped": int}` summary.
+		dict: `{"total": int, "sent": int, "skipped": int}` summary. When
+			`dry_run` is set, `sent`/`skipped` are always 0 and a `dry_run: True`
+			key is included.
 
 	"""
+	event_data = ctx.event.data or {}
+	validate(event_data, dict)
+	project_id = event_data.get("project_id")
+	dry_run = bool(event_data.get("dry_run"))
 
 	async def _invoke_project_audit(project: dict) -> dict:
 		"""Invoke one project's audit job, isolating its failure from the rest.
@@ -294,6 +309,16 @@ async def run_all_project_audits(ctx: inngest.Context) -> dict:
 
 	frappe_service = FrappeService()
 	projects = await frappe_service.get_billable_open_projects()
+
+	if project_id is not None:
+		projects = [p for p in projects if p["name"] == project_id]
+
+	if dry_run:
+		ctx.logger.info(
+			f"Dry run: would audit {len(projects)} project(s): "
+			f"{[p['name'] for p in projects]}"
+		)
+		return {"total": len(projects), "sent": 0, "skipped": 0, "dry_run": True}
 
 	steps = [
 		(lambda project=project: _invoke_project_audit(project)) for project in projects
