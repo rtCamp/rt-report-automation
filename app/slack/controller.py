@@ -234,6 +234,8 @@ async def handle_interaction(request: Request):
 		)
 	except Exception as e:
 		logger.error(f"Error sending pms_command event to Inngest: {e}")
+		if pending_ts:
+			SlackNotifierService().delete_message(channel_id, pending_ts)
 		return {
 			"response_type": "ephemeral",
 			"replace_original": True,
