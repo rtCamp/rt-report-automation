@@ -2,6 +2,7 @@
 
 import datetime
 import json
+from urllib.parse import urlparse
 
 import httpx
 import inngest
@@ -51,6 +52,24 @@ def _parse_interaction_payload(raw: object) -> dict:
 		logger.warning("Ignoring malformed Slack interaction payload")
 		return {}
 	return parsed if isinstance(parsed, dict) else {}
+
+
+def _is_allowed_slack_response_url(url: str) -> bool:
+	"""Strictly validate Slack response URLs before making outbound requests."""
+	try:
+		parsed = urlparse(url)
+	except Exception:
+		return False
+
+	if parsed.scheme != "https":
+		return False
+	if parsed.username or parsed.password:
+		return False
+	if parsed.hostname not in {"hooks.slack.com", "hooks.slack-gov.com"}:
+		return False
+	if not parsed.path.startswith("/actions/"):
+		return False
+	return True
 
 
 @router.post(
@@ -265,7 +284,7 @@ async def handle_interaction(request: Request):
 	# POST rather than return it: Slack applies `replace_original` reliably to
 	# an explicit response_url call, whereas a select menu's own HTTP reply
 	# can be dropped, leaving the picker looking inert.
-	if not is_slack_response_url(response_url):
+	if not _is_allowed_slack_response_url(response_url):
 		logger.error("Refusing to POST to non-Slack response_url")
 		return Response(status_code=200)
 
