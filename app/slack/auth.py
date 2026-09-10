@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import time
+from urllib.parse import urlsplit
 
 from fastapi import Header, Request
 
@@ -10,6 +11,23 @@ from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 
 _MAX_REQUEST_AGE_SECONDS = 60 * 5
+
+# `response_url` arrives inside a signed request but is still caller-supplied
+# data, so its host is validated before any outbound POST (CodeQL: SSRF).
+_SLACK_RESPONSE_URL_HOST = "hooks.slack.com"
+
+
+def is_slack_response_url(url: str) -> bool:
+	"""Whether a Slack `response_url` is safe to POST to.
+
+	Parses the URL rather than prefix-matching it: `https://hooks.slack.com/`
+	as a plain string prefix also matches `hooks.slack.com.evil.com`.
+	"""
+	try:
+		parts = urlsplit(url)
+	except ValueError:
+		return False
+	return parts.scheme == "https" and parts.hostname == _SLACK_RESPONSE_URL_HOST
 
 
 async def verify_slack_signature(

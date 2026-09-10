@@ -10,7 +10,7 @@ from fastapi.logger import logger
 
 from app.core.adapters import inngest_client
 from app.frappe.service import FrappeService
-from app.slack.auth import verify_slack_signature
+from app.slack.auth import is_slack_response_url, verify_slack_signature
 from app.slack.constants import AUDIT_PROJECT_SELECT_ACTION_ID
 from app.slack.notifier import SlackNotifierService
 from app.slack.utils.helpers import (
@@ -43,12 +43,6 @@ _USAGE_TEXT = (
 )
 
 
-# Slack's own webhook host. `response_url` arrives inside a signed request but
-# is still attacker-supplied data, so it's checked before we make an outbound
-# POST to it.
-_SLACK_RESPONSE_URL_PREFIX = "https://hooks.slack.com/"
-
-
 def _parse_interaction_payload(raw: object) -> dict:
 	"""Parse Slack's form-encoded `payload` field, tolerating junk."""
 	try:
@@ -57,11 +51,6 @@ def _parse_interaction_payload(raw: object) -> dict:
 		logger.warning("Ignoring malformed Slack interaction payload")
 		return {}
 	return parsed if isinstance(parsed, dict) else {}
-
-
-def _is_slack_response_url(url: str) -> bool:
-	"""Whether a response_url is safe to POST to."""
-	return url.startswith(_SLACK_RESPONSE_URL_PREFIX)
 
 
 @router.post(
@@ -276,11 +265,11 @@ async def handle_interaction(request: Request):
 	# POST rather than return it: Slack applies `replace_original` reliably to
 	# an explicit response_url call, whereas a select menu's own HTTP reply
 	# can be dropped, leaving the picker looking inert.
-	if not _is_slack_response_url(response_url):
+	if not is_slack_response_url(response_url):
 		logger.error("Refusing to POST to non-Slack response_url")
 		return Response(status_code=200)
 
-	async with httpx.AsyncClient() as client:
+	async with httpx.AsyncClient(follow_redirects=False) as client:
 		await client.post(response_url, json=pending_payload)
 
 	return Response(status_code=200)
