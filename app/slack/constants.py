@@ -4,6 +4,19 @@
 # 50+ RPM limit (60 calls total) but burst behavior should handle it.
 SLACK_API_RATE_LIMIT = 2
 
+# Echoed back by Slack on options requests and selections, so the interaction
+# handler can tell this menu apart from any future one.
+AUDIT_PROJECT_SELECT_ACTION_ID = "audit_project_select"
+
+# Slack rejects the whole Block Kit payload if either is exceeded.
+SLACK_OPTION_TEXT_LIMIT = 75
+SLACK_MAX_SELECT_OPTIONS = 100
+
+# A user ID maps to the same email indefinitely; cached to keep the lookup
+# off the picker's per-keystroke path.
+SLACK_USER_EMAIL_CACHE_KEY = "slack:user_email:{user_id}"
+SLACK_USER_EMAIL_CACHE_TTL = 86400
+
 # TODO(sainathpoojary): https://github.com/rtCamp/rt-report-automation/issues/11
 # After standardizing the workflow name, update it here.
 STANDUP_WORKFLOW_NAME = "AI Internal - Daily Tasks Tracker"

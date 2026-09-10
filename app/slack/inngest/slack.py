@@ -187,6 +187,22 @@ async def handle_pms_command(ctx: inngest.Context):
 			ctx.logger.error(f"Error building /pms response for {user_id}: {exc}")
 			text = "⚠️ Something went wrong reaching Next PMS. Please try again shortly."
 
+	# Requests from the project picker carry the channel they came from. The
+	# picker itself is ephemeral and Slack fixes a message's visibility for
+	# life, so the report has to be a NEW channel message rather than a reply
+	# through that response_url -- otherwise it stays private to the one
+	# person who ran the command.
+	channel_id = str(event_data.get("channel_id") or "")
+	pending_ts = str(event_data.get("pending_ts") or "")
+
+	if channel_id and notifier.post_to_channel(channel_id, text, blocks):
+		# The report is now in the channel; clear the in-progress card that
+		# was standing in for it, so the "building..." state doesn't linger
+		# above the finished report.
+		if pending_ts:
+			notifier.delete_message(channel_id, pending_ts)
+		return
+
 	payload: dict[str, object] = {
 		"response_type": "in_channel",
 		"text": text,

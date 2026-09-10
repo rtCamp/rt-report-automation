@@ -10,10 +10,8 @@ PROJECT_ENGINEERING_MANAGER_FIELD = "custom_engineering_manager"
 
 USER_DOCTYPE = "User"
 
-# A User's roles live in this child table. Queried directly rather than read
-# off the parent User document: production strips child tables the API user
-# can't read instead of erroring, so the inline `roles` key comes back empty
-# there even when the rows are readable through this doctype.
+# Read directly: production strips child tables the API user can't read, so
+# the parent User document's inline `roles` key comes back silently empty.
 HAS_ROLE_DOCTYPE = "Has Role"
 
 # Frappe roles that grant /pms audit access to any project by exact ID, even
@@ -23,6 +21,11 @@ HAS_ROLE_DOCTYPE = "Has Role"
 DELIVERY_MANAGER_ROLE = "Delivery Manager"
 SALES_MANAGER_ROLE = "Sales Manager"
 PROJECT_AUDIT_OVERRIDE_ROLES = frozenset({DELIVERY_MANAGER_ROLE, SALES_MANAGER_ROLE})
+
+# Cached to keep the role lookup off the picker's per-keystroke path. Short
+# TTL so a granted or revoked role takes effect within minutes.
+USER_ROLES_CACHE_KEY = "frappe:user_roles:{email}"
+USER_ROLES_CACHE_TTL = 300
 
 PROJECT_BILLING_TYPE_FIELD = "custom_billing_type"
 NON_BILLABLE_TYPE = "Non-Billable"
