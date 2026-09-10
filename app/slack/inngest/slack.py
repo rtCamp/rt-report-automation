@@ -12,7 +12,7 @@ from app.core.utils import to_unix_inclusive_date_range, validate
 from app.frappe.constants import PROJECT_MANAGER_FIELD
 from app.frappe.service import FrappeService
 from app.llm.models.summarization import ProjectMetadata, SlackMetadata
-from app.slack.auth import is_slack_response_url
+from app.slack.auth import safe_slack_response_url
 from app.slack.constants import SLACK_API_RATE_LIMIT
 from app.slack.notifier import SlackNotifierService
 from app.slack.service import SlackService
@@ -212,12 +212,13 @@ async def handle_pms_command(ctx: inngest.Context):
 	if blocks:
 		payload["blocks"] = blocks
 
-	if not is_slack_response_url(response_url):
+	safe_url = safe_slack_response_url(response_url)
+	if not safe_url:
 		ctx.logger.error("Refusing to POST /pms response to non-Slack response_url")
 		return
 
 	async with httpx.AsyncClient(follow_redirects=False) as client:
-		response = await client.post(response_url, json=payload)
+		response = await client.post(safe_url, json=payload)
 
 	if response.status_code >= 400:
 		# httpx doesn't raise for non-2xx by default -- an expired response_url
