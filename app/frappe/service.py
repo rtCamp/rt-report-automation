@@ -10,6 +10,7 @@ from app.core.utils import log_and_raise
 from app.frappe.constants import (
 	DOCSHARE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
+	HAS_ROLE_DOCTYPE,
 	NON_BILLABLE_TYPE,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -193,38 +194,61 @@ class FrappeService:
 	async def get_user_roles(self, email: str) -> list[str]:
 		"""Fetch the Frappe roles assigned to a user.
 
-		A User's `name` is their email address, and `roles` is a child
-		table (`Has Role`) returned inline by the single-document fetch --
-		powers the /pms audit command's Delivery Manager override, which
-		lets a Delivery Manager audit any project by exact ID even when
-		they aren't its PM.
+		Queries the `Has Role` child table directly instead of reading the
+		`roles` key off the parent User document. Both are valid in Frappe,
+		but a site that grants the API user read on `User` without read on
+		`Has Role` returns the parent document with `roles` silently emptied
+		rather than erroring -- which reads as "this user has no roles" and
+		quietly denies the audit override. Querying the child doctype makes
+		that permission gap surface as a non-200 instead.
+
+		Powers the /pms audit command's privileged-role override (see
+		`PROJECT_AUDIT_OVERRIDE_ROLES`), which lets a Delivery Manager or
+		Sales Manager audit any project by exact ID even when they aren't
+		its PM.
 
 		Args:
 			email (str): The user's email (Frappe User `name`).
 
 		Returns:
 			list[str]: Role names, e.g. ["Employee", "Delivery Manager"].
-				Empty if the user doesn't exist or the lookup fails.
+				Empty if the user doesn't exist or has no roles.
+
+		Raises:
+			Exception: If the roles lookup itself fails (network/transport).
+				A non-200 from Frappe is logged and returns `[]` instead, so
+				callers can't distinguish "no roles" from "no permission to
+				read roles" -- see `_resolve_privileged_project_override`.
 
 		"""
+		params = {
+			"filters": json.dumps([["parent", "=", email]]),
+			"fields": json.dumps(["role"]),
+			"limit_page_length": 0,
+			# Required by Frappe for child-table reads -- it identifies which
+			# parent doctype the rows belong to. Omitting it returns a 403.
+			"parent": USER_DOCTYPE,
+		}
+
 		try:
 			async with httpx.AsyncClient() as client:
 				response = await client.get(
-					f"{self.base_url}/api/resource/{USER_DOCTYPE}/{email}",
+					f"{self.base_url}/api/resource/{HAS_ROLE_DOCTYPE}",
 					headers=self.headers,
+					params=params,
 				)
 
 			if response.status_code != 200:
 				self.logger.warning(
-					"Error fetching user %s: %s %s",
+					"Error fetching roles for user %s: %s %s",
 					email,
 					response.status_code,
 					response.text,
 				)
 				return []
 
-			data = response.json().get("data") or {}
-			return [row["role"] for row in data.get("roles") or [] if row.get("role")]
+			rows = response.json().get("data") or []
+			return [row["role"] for row in rows if row.get("role")]
 
 		except Exception as exc:
 			log_and_raise(

@@ -10,13 +10,14 @@ import asyncio
 import datetime
 import logging
 import re
+from enum import StrEnum
 
 import inngest
 
 from app.core.config import settings
 from app.frappe.constants import (
 	BOOLEAN_FIELDS,
-	DELIVERY_MANAGER_ROLE,
+	PROJECT_AUDIT_OVERRIDE_ROLES,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_BUDGET_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -296,6 +297,54 @@ def _format_multiple_matches(projects: list[dict], project_filter: str) -> str:
 	return (
 		f"🤷 '{project_filter}' matched {len(projects)} projects — "
 		f"an audit needs exactly one. Use the exact project ID:\n{matches}"
+	)
+
+
+def _format_no_project_access(
+	project_filter: str,
+	subcommand: str,
+	outcome: "ProjectAccessOutcome | None" = None,
+) -> str:
+	"""Explain why a project couldn't be returned, per acceptance criteria (#185).
+
+	The three reasons need different copy: a bad ID is a typo the requester
+	can fix, a missing role is a permission problem they need granted, and
+	a non-audit subcommand is always PM-scoped. Collapsing them into one
+	"not found among your projects" message sends people to the wrong fix.
+
+	Args:
+		project_filter (str): What the requester typed.
+		subcommand (str): The /pms subcommand that was run.
+		outcome (ProjectAccessOutcome | None): Result of the privileged
+			override, when one was attempted. ``None`` for subcommands that
+			don't consult it.
+
+	Returns:
+		str: Slack mrkdwn explaining the outcome and the next step.
+
+	"""
+	if outcome is ProjectAccessOutcome.PROJECT_NOT_FOUND:
+		return (
+			f"🔍 No project with ID `{project_filter}` exists in Next PMS.\n"
+			"Check the ID and try again — `/pms projects` lists the ones "
+			"you manage."
+		)
+
+	if outcome is ProjectAccessOutcome.NOT_PRIVILEGED:
+		roles = " or ".join(f"*{r}*" for r in sorted(PROJECT_AUDIT_OVERRIDE_ROLES))
+		return (
+			f"🔒 You don't have access to `{project_filter}`.\n"
+			"You can audit projects you manage; auditing any other project "
+			f"needs the {roles} role in Next PMS.\n"
+			"Ask an admin to grant it, or request the audit from the "
+			"project's manager."
+		)
+
+	# No override attempted -- `projects`/`missing-fields` are always PM-scoped.
+	return (
+		f"🤷 No project matching '{project_filter}' found among your projects.\n"
+		f"`/pms {subcommand}` only covers projects where you're the project "
+		"manager."
 	)
 
 
@@ -1576,21 +1625,54 @@ async def _build_audit_report(
 	)
 
 
-async def _resolve_delivery_manager_override(
+class ProjectAccessOutcome(StrEnum):
+	"""Why a privileged-override lookup succeeded or failed.
+
+	Lets the caller explain the outcome to the requester instead of
+	collapsing "you lack the role", "that project doesn't exist" and
+	"you're not its PM" into one misleading message.
+	"""
+
+	GRANTED = "granted"
+	NOT_PRIVILEGED = "not_privileged"
+	PROJECT_NOT_FOUND = "project_not_found"
+
+
+async def _resolve_privileged_project_override(
 	frappe_service: FrappeService, email: str, project_filter: str
-) -> dict | None:
-	"""Let a Delivery Manager audit any project by exact ID, even if they're not its PM.
+) -> tuple[ProjectAccessOutcome, dict | None]:
+	"""Let a privileged role audit any project by exact ID, even if not its PM.
+
+	Privileged roles are `PROJECT_AUDIT_OVERRIDE_ROLES` -- Delivery Manager
+	(checking in on any project they oversee) and Sales Manager (so CSMs can
+	review any project they're asked about).
 
 	Only called as a fallback when the requester isn't already the PM of a
 	matching project (the common case) -- the role lookup costs an extra
 	Frappe call, so it's skipped entirely unless needed. Requires an exact
 	project ID match rather than the fuzzy name search PM-scoped lookups
 	get, since there's no bounded "my projects" list to search within.
+
+	Args:
+		frappe_service (FrappeService): Service used for the role and
+			project lookups.
+		email (str): The requester's email (Frappe User `name`).
+		project_filter (str): Exact project ID to resolve.
+
+	Returns:
+		tuple[ProjectAccessOutcome, dict | None]: The outcome and, when
+			`GRANTED`, the resolved project document.
+
 	"""
 	roles = await frappe_service.get_user_roles(email)
-	if DELIVERY_MANAGER_ROLE not in roles:
-		return None
-	return await frappe_service.get_project_by_id(project_filter)
+	if not PROJECT_AUDIT_OVERRIDE_ROLES.intersection(roles):
+		return ProjectAccessOutcome.NOT_PRIVILEGED, None
+
+	project = await frappe_service.get_project_by_id(project_filter)
+	if not project:
+		return ProjectAccessOutcome.PROJECT_NOT_FOUND, None
+
+	return ProjectAccessOutcome.GRANTED, project
 
 
 async def _send_project_audit(email: str, text: str, blocks: list[dict]) -> dict:
