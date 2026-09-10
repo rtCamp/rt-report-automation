@@ -8,6 +8,7 @@ definitions rather than ~1400 lines of Block Kit formatting logic.
 
 import asyncio
 import datetime
+import json
 import logging
 import re
 from enum import StrEnum
@@ -1776,6 +1777,28 @@ class ProjectAccessOutcome(StrEnum):
 	GRANTED = "granted"
 	NOT_PRIVILEGED = "not_privileged"
 	PROJECT_NOT_FOUND = "project_not_found"
+
+
+def _parse_interaction_payload(raw: object) -> dict:
+	"""Parse Slack's form-encoded `payload` field, tolerating junk."""
+	try:
+		parsed = json.loads(str(raw or "{}"))
+	except (TypeError, ValueError):
+		logger.warning("Ignoring malformed Slack interaction payload")
+		return {}
+	return parsed if isinstance(parsed, dict) else {}
+
+
+async def _lookup_picker_projects(user_id: str, query: str) -> list[dict]:
+	"""Resolve the requester and return the projects they may audit."""
+	# get_user_email uses the blocking Slack SDK -- off-thread so a slow call
+	# can't stall the event loop for every other request.
+	email = await asyncio.to_thread(SlackNotifierService().get_user_email, user_id)
+	if not email:
+		logger.warning(f"Could not resolve email for Slack user {user_id}")
+		return []
+
+	return await _search_projects_for_user(FrappeService(), email, query)
 
 
 async def _search_projects_for_user(

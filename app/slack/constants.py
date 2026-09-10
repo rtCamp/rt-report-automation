@@ -12,6 +12,19 @@ AUDIT_PROJECT_SELECT_ACTION_ID = "audit_project_select"
 SLACK_OPTION_TEXT_LIMIT = 75
 SLACK_MAX_SELECT_OPTIONS = 100
 
+# Slack drops the options response at 3s; stay under it so a slow upstream
+# yields an empty menu rather than nothing at all.
+OPTIONS_TIME_BUDGET_SECONDS = 2.5
+
+# /pms subcommands, and the usage text shown for anything else.
+PMS_SUBCOMMANDS = frozenset({"projects", "missing-fields", "audit"})
+PMS_USAGE_TEXT = (
+	"Usage: `/pms projects`, `/pms missing-fields`, or `/pms audit`. "
+	"`missing-fields` can optionally take a project name or ID to filter to a "
+	"single project, e.g. `/pms missing-fields PROJ-0669`. `audit` opens a "
+	"project picker, or takes an ID directly, e.g. `/pms audit PROJ-0669`."
+)
+
 # A user ID maps to the same email indefinitely; cached to keep the lookup
 # off the picker's per-keystroke path.
 SLACK_USER_EMAIL_CACHE_KEY = "slack:user_email:{user_id}"

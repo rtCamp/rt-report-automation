@@ -1,7 +1,7 @@
 """Controller for the Slack /pms slash command and the PMS bulk audit trigger."""
 
+import asyncio
 import datetime
-import json
 
 import httpx
 import inngest
@@ -9,15 +9,20 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.logger import logger
 
 from app.core.adapters import inngest_client
-from app.frappe.service import FrappeService
 from app.slack.auth import safe_slack_response_url, verify_slack_signature
-from app.slack.constants import AUDIT_PROJECT_SELECT_ACTION_ID
+from app.slack.constants import (
+	AUDIT_PROJECT_SELECT_ACTION_ID,
+	OPTIONS_TIME_BUDGET_SECONDS,
+	PMS_SUBCOMMANDS,
+	PMS_USAGE_TEXT,
+)
 from app.slack.notifier import SlackNotifierService
 from app.slack.utils.helpers import (
 	_format_audit_pending,
 	_format_project_options,
 	_format_project_picker,
-	_search_projects_for_user,
+	_lookup_picker_projects,
+	_parse_interaction_payload,
 )
 
 router = APIRouter(
@@ -33,24 +38,6 @@ audit_router = APIRouter(
 	prefix="/audit",
 	tags=["PMS Bulk Audit"],
 )
-
-_SUBCOMMANDS = {"projects", "missing-fields", "audit"}
-_USAGE_TEXT = (
-	"Usage: `/pms projects`, `/pms missing-fields`, or `/pms audit`. "
-	"`missing-fields` can optionally take a project name or ID to filter to a "
-	"single project, e.g. `/pms missing-fields PROJ-0669`. `audit` opens a "
-	"project picker, or takes an ID directly, e.g. `/pms audit PROJ-0669`."
-)
-
-
-def _parse_interaction_payload(raw: object) -> dict:
-	"""Parse Slack's form-encoded `payload` field, tolerating junk."""
-	try:
-		parsed = json.loads(str(raw or "{}"))
-	except (TypeError, ValueError):
-		logger.warning("Ignoring malformed Slack interaction payload")
-		return {}
-	return parsed if isinstance(parsed, dict) else {}
 
 
 @router.post(
@@ -80,8 +67,8 @@ async def handle_slash_command(request: Request):
 	subcommand = parts[0].lower() if parts else ""
 	project_filter = parts[1].strip() if len(parts) > 1 else None
 
-	if subcommand not in _SUBCOMMANDS:
-		return {"response_type": "in_channel", "text": _USAGE_TEXT}
+	if subcommand not in PMS_SUBCOMMANDS:
+		return {"response_type": "in_channel", "text": PMS_USAGE_TEXT}
 
 	if subcommand == "audit" and not project_filter:
 		# `in_channel`, not ephemeral: Slack fixes a message's visibility for
@@ -151,14 +138,15 @@ async def handle_select_options(request: Request):
 	user_id = str((payload.get("user") or {}).get("id", ""))
 
 	try:
-		email = SlackNotifierService().get_user_email(user_id)
-		if not email:
-			logger.warning(f"Could not resolve email for Slack user {user_id}")
-			return {"options": []}
-
-		# Scoped to what this user is actually allowed to audit, so the
-		# picker never offers a project the audit would then refuse.
-		projects = await _search_projects_for_user(FrappeService(), email, query)
+		projects = await asyncio.wait_for(
+			_lookup_picker_projects(user_id, query),
+			timeout=OPTIONS_TIME_BUDGET_SECONDS,
+		)
+	except TimeoutError:
+		# Slack abandons this request at 3s, so return early rather than let
+		# it drop the response and render nothing at all.
+		logger.warning("Timed out building /pms audit picker options")
+		return {"options": []}
 	except Exception as e:
 		# Empty list renders as "no results", better than Slack's error toast.
 		logger.error(f"Error searching projects for /pms audit picker: {e}")
