@@ -196,12 +196,11 @@ async def handle_pms_command(ctx: inngest.Context):
 	channel_id = str(event_data.get("channel_id") or "")
 	pending_ts = str(event_data.get("pending_ts") or "")
 
-	if channel_id and notifier.post_to_channel(channel_id, text, blocks):
+	if pending_ts and notifier.post_to_channel(channel_id, text, blocks):
 		# The report is now in the channel; clear the in-progress card that
 		# was standing in for it, so the "building..." state doesn't linger
 		# above the finished report.
-		if pending_ts:
-			notifier.delete_message(channel_id, pending_ts)
+		notifier.delete_message(channel_id, pending_ts)
 		return
 
 	payload: dict[str, object] = {
