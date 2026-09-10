@@ -11,7 +11,7 @@ from fastapi.logger import logger
 
 from app.core.adapters import inngest_client
 from app.frappe.service import FrappeService
-from app.slack.auth import is_slack_response_url, verify_slack_signature
+from app.slack.auth import verify_slack_signature
 from app.slack.constants import AUDIT_PROJECT_SELECT_ACTION_ID
 from app.slack.notifier import SlackNotifierService
 from app.slack.utils.helpers import (
@@ -67,9 +67,7 @@ def _is_allowed_slack_response_url(url: str) -> bool:
 		return False
 	if parsed.hostname not in {"hooks.slack.com", "hooks.slack-gov.com"}:
 		return False
-	if not parsed.path.startswith("/actions/"):
-		return False
-	return True
+	return parsed.path.startswith("/actions/")
 
 
 @router.post(
