@@ -2,14 +2,17 @@
 
 import json
 import logging
+from typing import cast
 
 import httpx
 
+from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.utils import log_and_raise
 from app.frappe.constants import (
 	DOCSHARE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
+	HAS_ROLE_DOCTYPE,
 	NON_BILLABLE_TYPE,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -20,6 +23,8 @@ from app.frappe.constants import (
 	RISK_DOCTYPE,
 	TODO_DOCTYPE,
 	USER_DOCTYPE,
+	USER_ROLES_CACHE_KEY,
+	USER_ROLES_CACHE_TTL,
 )
 
 
@@ -104,6 +109,68 @@ class FrappeService:
 		]
 		return await self._fetch_list(PROJECT_DOCTYPE, filters, fields)
 
+	async def search_projects(self, query: str, limit: int = 25) -> list[dict]:
+		"""Search active projects by name or ID, across every project.
+
+		Backs the `/pms audit` project picker, which needs to search the whole
+		project list rather than the requester's own -- a CSM reviewing someone
+		else's project has no bounded "my projects" set to filter within.
+
+		Suppressed-status projects are excluded so the picker doesn't offer
+		completed or cancelled work, matching `get_billable_open_projects`.
+
+		Args:
+			query (str): Free text matched against project name and ID. An
+				empty query returns the first `limit` active projects, which
+				is what Slack sends when the menu is first opened.
+			limit (int): Maximum results. Slack renders at most 100 options.
+
+		Returns:
+			list[dict]: Records with `name`, `project_name` and `status`.
+
+		"""
+		filters: list[list] = [
+			["status", "not in", list(PROJECT_SUPPRESSED_STATUSES)],
+		]
+
+		# `or_filters` so typing either the ID or the name finds the project.
+		or_filters = (
+			[
+				["name", "like", f"%{query}%"],
+				["project_name", "like", f"%{query}%"],
+			]
+			if query
+			else []
+		)
+
+		params = {
+			"filters": json.dumps(filters),
+			"fields": json.dumps(["name", "project_name", "status"]),
+			"limit_page_length": limit,
+			"order_by": "modified desc",
+		}
+		if or_filters:
+			params["or_filters"] = json.dumps(or_filters)
+
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.get(
+					f"{self.base_url}/api/resource/{PROJECT_DOCTYPE}",
+					headers=self.headers,
+					params=params,
+				)
+
+			response.raise_for_status()
+			return response.json().get("data", [])
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while searching projects in Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
 	async def _fetch_list(
 		self,
 		doctype: str,
@@ -171,15 +238,14 @@ class FrappeService:
 					headers=self.headers,
 				)
 
-			if response.status_code != 200:
-				self.logger.warning(
-					"Error fetching project %s: %s %s",
-					project_id,
-					response.status_code,
-					response.text,
-				)
+			# Only a 404 means "no such project". Anything else (403, 5xx) is a
+			# permission problem or an outage, and must not be reported to the
+			# user as a bad project ID.
+			if response.status_code == httpx.codes.NOT_FOUND:
+				self.logger.info("Project %s not found in Frappe", project_id)
 				return None
 
+			response.raise_for_status()
 			return response.json().get("data")
 
 		except Exception as exc:
@@ -193,38 +259,73 @@ class FrappeService:
 	async def get_user_roles(self, email: str) -> list[str]:
 		"""Fetch the Frappe roles assigned to a user.
 
-		A User's `name` is their email address, and `roles` is a child
-		table (`Has Role`) returned inline by the single-document fetch --
-		powers the /pms audit command's Delivery Manager override, which
-		lets a Delivery Manager audit any project by exact ID even when
-		they aren't its PM.
+		Reads the `Has Role` child table directly rather than the `roles` key
+		on the parent User document: a site granting read on `User` but not on
+		`Has Role` returns that key silently emptied, which is indistinguishable
+		from "no roles" and quietly denies the audit override.
+
+		Powers the /pms audit command's privileged-role override (see
+		`PROJECT_AUDIT_OVERRIDE_ROLES`).
 
 		Args:
 			email (str): The user's email (Frappe User `name`).
 
 		Returns:
 			list[str]: Role names, e.g. ["Employee", "Delivery Manager"].
-				Empty if the user doesn't exist or the lookup fails.
+				Empty only when the user genuinely has no roles.
+
+		Raises:
+			Exception: If the lookup fails. Deliberately not degraded to `[]`:
+				that would read as "not privileged" and tell an eligible CSM
+				to request a role they already hold.
 
 		"""
+		cache_key = USER_ROLES_CACHE_KEY.format(email=email)
+		try:
+			cached = redis_client.get(cache_key)
+			if cached is not None:
+				return json.loads(cast("str", cached))
+		except Exception as exc:
+			# A cache miss must never break the lookup -- fall through to
+			# Frappe and just pay the round-trip.
+			self.logger.warning("Could not read cached roles for %s: %s", email, exc)
+
+		params = {
+			"filters": json.dumps([["parent", "=", email]]),
+			"fields": json.dumps(["role"]),
+			"limit_page_length": 0,
+			# Required by Frappe for child-table reads -- it identifies which
+			# parent doctype the rows belong to. Omitting it returns a 403.
+			"parent": USER_DOCTYPE,
+		}
+
 		try:
 			async with httpx.AsyncClient() as client:
 				response = await client.get(
-					f"{self.base_url}/api/resource/{USER_DOCTYPE}/{email}",
+					f"{self.base_url}/api/resource/{HAS_ROLE_DOCTYPE}",
 					headers=self.headers,
+					params=params,
 				)
 
-			if response.status_code != 200:
+			response.raise_for_status()
+
+			rows = response.json().get("data") or []
+			roles = [row["role"] for row in rows if row.get("role")]
+
+			try:
+				redis_client.set(
+					cache_key,
+					json.dumps(roles),
+					ex=USER_ROLES_CACHE_TTL,
+				)
+			except Exception as exc:
 				self.logger.warning(
-					"Error fetching user %s: %s %s",
+					"Could not cache roles for %s: %s",
 					email,
-					response.status_code,
-					response.text,
+					exc,
 				)
-				return []
 
-			data = response.json().get("data") or {}
-			return [row["role"] for row in data.get("roles") or [] if row.get("role")]
+			return roles
 
 		except Exception as exc:
 			log_and_raise(
