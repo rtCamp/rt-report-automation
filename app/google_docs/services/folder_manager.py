@@ -156,7 +156,24 @@ class FolderManagerService:
 			Exception: If folder is not found or API call errors occur.
 
 		"""
-		drive_service = self.auth_service.get_drive_service()
+		drive_service: Any = self.auth_service.get_drive_service()
+
+		# Checked first because the recursive search swallows 403/404: an
+		# unshared parent would otherwise be reported as a missing subfolder.
+		try:
+			drive_service.files().get(
+				fileId=parent_folder_id,
+				fields="id",
+				supportsAllDrives=True,
+			).execute()
+		except Exception as exc:
+			log_and_raise(
+				logger,
+				f"Cannot access Drive folder {parent_folder_id}. Share it with "
+				f"{self.auth_service.service_account_email} first.",
+				Exception,
+				cause=exc,
+			)
 
 		# Try to find the folder recursively
 		folder_id = self._search_folder_recursive(

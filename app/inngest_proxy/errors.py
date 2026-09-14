@@ -174,7 +174,12 @@ ERROR_RULES: tuple[ErrorRule, ...] = (
 	_rule(
 		RunErrorCode.DRIVE_STORAGE_FULL,
 		r"storagequotaexceeded|quota.*storage|drive storage",
-		"The report bot's Google Drive storage is full.",
+		(
+			"The report couldn't be saved to Drive: the service account has no "
+			"storage of its own, so it can only create files inside a Shared "
+			"Drive."
+		),
+		("Move the project's Drive folder into a Shared Drive, then try again."),
 	),
 	_rule(
 		RunErrorCode.GOOGLE_AUTH_FAILED,
@@ -187,7 +192,8 @@ ERROR_RULES: tuple[ErrorRule, ...] = (
 		# A 404 from Drive on a folder we were handed almost always means "not
 		# shared with us" rather than "deleted" -- Drive hides what the caller
 		# cannot see, so this is reported as a sharing problem.
-		r"file not found: |notfound.*folder|folder not found|access denied"
+		r"cannot access drive folder|file not found: |notfound.*folder"
+		r"|folder not found|access denied"
 		r"|does not have permission|the user does not have sufficient permissions",
 		"The report bot cannot see the project's Google Drive folder.",
 		(
@@ -262,7 +268,7 @@ CANCELLED_STATUSES = frozenset({"Cancelled"})
 MAX_TECHNICAL_DETAIL_CHARS = 2000
 
 
-def extract_failure_text(output: Any) -> str:
+def extract_failure_text(output: Any, *, include_stack: bool = True) -> str:
 	"""Flatten an Inngest run `output` into searchable text.
 
 	Inngest reports a failure as an object with `name`, `message` and `stack`
@@ -271,6 +277,8 @@ def extract_failure_text(output: Any) -> str:
 
 	Args:
 		output: The `output` value from an Inngest run record.
+		include_stack: Include the traceback. Wanted when matching rules,
+			not when building a user-facing detail string.
 
 	Returns:
 		str: Text suitable for pattern matching, empty if nothing usable.
@@ -283,11 +291,10 @@ def extract_failure_text(output: Any) -> str:
 		return output
 
 	if isinstance(output, dict):
-		parts = [
-			str(output[key])
-			for key in ("name", "code", "message", "error", "detail", "stack")
-			if output.get(key)
-		]
+		keys = ("name", "code", "message", "error", "detail")
+		if include_stack:
+			keys = (*keys, "stack")
+		parts = [str(output[key]) for key in keys if output.get(key)]
 		return "\n".join(dedupe_repeated_text(parts)) if parts else str(output)
 
 	return str(output)

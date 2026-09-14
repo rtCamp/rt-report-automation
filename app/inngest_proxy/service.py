@@ -21,7 +21,7 @@ from app.inngest_proxy.errors import (
 	extract_failure_text,
 	truncate_detail,
 )
-from app.inngest_proxy.models import RunErrorDetail, RunState, RunStatusResponse
+from app.inngest_proxy.models import RunErrorDetail, RunStatus, RunStatusResponse
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +32,14 @@ _NOT_USER_FIXABLE = frozenset(
 		RunErrorCode.UNKNOWN,
 		RunErrorCode.TEMPLATE_MISMATCH,
 		RunErrorCode.NO_DOCUMENT_PRODUCED,
-		RunErrorCode.DRIVE_STORAGE_FULL,
 		RunErrorCode.GOOGLE_AUTH_FAILED,
 	},
 )
 
 _STATE_MESSAGES = {
-	RunState.PENDING: "Report generation is queued…",
-	RunState.RUNNING: "Report generation is in progress…",
-	RunState.COMPLETED: "Report generated successfully.",
+	RunStatus.PENDING: "Report generation is queued…",
+	RunStatus.RUNNING: "Report generation is in progress…",
+	RunStatus.COMPLETED: "Report generated successfully.",
 }
 
 
@@ -67,18 +66,34 @@ class InngestProxyService:
 		"""
 		payload = await self._fetch_runs(event_id)
 		runs = payload.get("data") or []
-		run = runs[0] if isinstance(runs, list) and runs else None
+		run = self._select_run(runs)
 
-		if not isinstance(run, dict):
+		if run is None:
 			# Inngest has accepted the event but not yet materialized a run.
 			return RunStatusResponse(
 				event_id=event_id,
-				state=RunState.PENDING,
+				status=RunStatus.PENDING,
 				is_terminal=False,
 				message="Waiting for the run to start…",
 			)
 
 		return self._build_response(event_id, run)
+
+	@staticmethod
+	def _select_run(runs: Any) -> dict | None:
+		"""Pick the live run for an event.
+
+		List order isn't guaranteed, and `retries` leaves earlier attempts
+		alongside the current one, so the newest start wins.
+		"""
+		if not isinstance(runs, list):
+			return None
+
+		candidates = [r for r in runs if isinstance(r, dict)]
+		if not candidates:
+			return None
+
+		return max(candidates, key=lambda r: str(r.get("run_started_at") or ""))
 
 	async def _fetch_runs(self, event_id: str) -> dict[str, Any]:
 		"""Fetch the raw runs payload for an event from the Inngest API."""
@@ -110,23 +125,29 @@ class InngestProxyService:
 
 	def _build_response(self, event_id: str, run: dict) -> RunStatusResponse:
 		"""Normalize a single Inngest run record into the frontend response."""
-		status = run.get("status")
 		run_id = run.get("run_id")
 		output = run.get("output")
-		state = self._derive_state(status)
+		status = self._derive_state(run.get("status"))
 
 		document_url = None
 		error = None
 
-		if state is RunState.COMPLETED:
+		if status is RunStatus.COMPLETED:
 			document_url = (
 				output.get("document_url") if isinstance(output, dict) else None
 			)
-			if not document_url:
-				# A "Completed" run with no URL is a real failure from the
-				# user's point of view -- report it as one instead of leaving
-				# the frontend to guess.
-				state = RunState.FAILED
+			if not run.get("ended_at"):
+				# Inngest reports "Completed" before the run has actually
+				# finished -- `ended_at` and `output` are still null. Treat
+				# that as in-flight so a mid-run poll doesn't declare either
+				# success or failure prematurely.
+				status = RunStatus.RUNNING
+				document_url = None
+			elif not document_url:
+				# A genuinely finished run with no URL is a real failure from
+				# the user's point of view -- report it as one instead of
+				# leaving the frontend to guess.
+				status = RunStatus.FAILED
 				error = self._build_error(
 					run,
 					code=RunErrorCode.NO_DOCUMENT_PRODUCED,
@@ -135,14 +156,14 @@ class InngestProxyService:
 					),
 					action=None,
 				)
-		elif state is RunState.CANCELLED:
+		elif status is RunStatus.CANCELLED:
 			error = self._build_error(
 				run,
 				code=RunErrorCode.RUN_CANCELLED,
 				user_message="Report generation was cancelled before it finished.",
 				action="Trigger the report again.",
 			)
-		elif state is RunState.FAILED:
+		elif status is RunStatus.FAILED:
 			code, user_message, action = classify_failure(output)
 			error = self._build_error(
 				run,
@@ -154,11 +175,11 @@ class InngestProxyService:
 		return RunStatusResponse(
 			event_id=event_id,
 			run_id=run_id,
-			state=state,
+			function_id=run.get("function_id"),
 			status=status,
-			is_terminal=state
-			in {RunState.COMPLETED, RunState.FAILED, RunState.CANCELLED},
-			message=self._build_message(state, error),
+			is_terminal=status
+			in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED},
+			message=self._build_message(status, error),
 			document_url=document_url,
 			error=error,
 			started_at=run.get("run_started_at"),
@@ -167,17 +188,17 @@ class InngestProxyService:
 		)
 
 	@staticmethod
-	def _derive_state(status: str | None) -> RunState:
-		"""Map an Inngest status string onto a coarse run state."""
+	def _derive_state(status: str | None) -> RunStatus:
+		"""Map Inngest's raw status string onto a coarse run status."""
 		if status in FAILED_STATUSES:
-			return RunState.FAILED
+			return RunStatus.FAILED
 		if status in CANCELLED_STATUSES:
-			return RunState.CANCELLED
+			return RunStatus.CANCELLED
 		if status == "Completed":
-			return RunState.COMPLETED
+			return RunStatus.COMPLETED
 		if status == "Running":
-			return RunState.RUNNING
-		return RunState.PENDING
+			return RunStatus.RUNNING
+		return RunStatus.PENDING
 
 	@staticmethod
 	def _build_error(
@@ -192,12 +213,15 @@ class InngestProxyService:
 		# value the user copies stays valid.
 		trace_id = run.get("run_id") or run.get("event_id") or "unavailable"
 
-		raw_text = extract_failure_text(run.get("output"))
+		# Stack traces help classification but are noise in a user-facing
+		# payload -- the full trace stays available under `raw`.
+		raw_text = extract_failure_text(run.get("output"), include_stack=False)
+		match_text = extract_failure_text(run.get("output"))
 
 		# When the failure names a Drive folder, hand the user a direct link to
 		# it -- the fix ("create a subfolder here") is a click away, and a bare
 		# folder ID in a log line is not something a PM can act on.
-		folder_id = extract_drive_folder_id(raw_text)
+		folder_id = extract_drive_folder_id(match_text)
 
 		return RunErrorDetail(
 			error_code=code,
@@ -211,11 +235,11 @@ class InngestProxyService:
 		)
 
 	@staticmethod
-	def _build_message(state: RunState, error: RunErrorDetail | None) -> str:
+	def _build_message(status: RunStatus, error: RunErrorDetail | None) -> str:
 		"""Build the single status line the toast renders."""
 		if error is not None:
 			if error.action:
 				return f"{error.user_message} {error.action}"
 			return error.user_message
 
-		return _STATE_MESSAGES.get(state, "Report generation is in progress…")
+		return _STATE_MESSAGES.get(status, "Report generation is in progress…")

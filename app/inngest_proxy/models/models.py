@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from app.inngest_proxy.errors import RunErrorCode  # noqa: TC001
 
 
-class RunState(StrEnum):
-	"""Coarse run state the frontend renders, derived from the Inngest status."""
+class RunStatus(StrEnum):
+	"""Coarse run status the frontend renders, normalized from Inngest's own."""
 
 	PENDING = "pending"
 	RUNNING = "running"
@@ -54,7 +54,7 @@ class RunErrorDetail(BaseModel):
 	)
 	occurred_at: str | None = Field(
 		default=None,
-		description="ISO-8601 timestamp of when the run reached its failed state.",
+		description="ISO-8601 timestamp of when the run failed.",
 	)
 
 
@@ -66,13 +66,13 @@ class RunStatusResponse(BaseModel):
 		default=None,
 		description="The Inngest run ID, absent until a run has been created.",
 	)
-	state: RunState = Field(description="Coarse run state to render.")
-	status: str | None = Field(
+	function_id: str | None = Field(
 		default=None,
-		description="Raw Inngest status string, for debugging.",
+		description="Which Inngest function produced this run.",
 	)
+	status: RunStatus = Field(description="Coarse run status to render.")
 	is_terminal: bool = Field(
-		description="True when polling should stop -- no further state change.",
+		description="True when polling should stop -- no further status change.",
 	)
 	message: str = Field(description="Human-readable status line for the toast.")
 	document_url: str | None = Field(

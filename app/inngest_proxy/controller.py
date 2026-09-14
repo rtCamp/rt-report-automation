@@ -35,8 +35,7 @@ inngest_proxy_service = InngestProxyService()
 							"value": {
 								"event_id": "01KPZ2GTFVR7X2X4V0B1Q9QS6X",
 								"run_id": "01KPZ2GTK23KKQBD1Y3NYYHC8E",
-								"state": "completed",
-								"status": "Completed",
+								"status": "completed",
 								"is_terminal": True,
 								"message": "Report generated successfully.",
 								"document_url": "https://docs.google.com/document/d/example/edit",
@@ -48,8 +47,7 @@ inngest_proxy_service = InngestProxyService()
 							"value": {
 								"event_id": "01KPZ2GTFVR7X2X4V0B1Q9QS6X",
 								"run_id": "01KPZ2GTK23KKQBD1Y3NYYHC8E",
-								"state": "failed",
-								"status": "Failed",
+								"status": "failed",
 								"is_terminal": True,
 								"message": (
 									"The report bot does not have access to the "
@@ -78,8 +76,7 @@ inngest_proxy_service = InngestProxyService()
 							"value": {
 								"event_id": "01KPZ2GTFVR7X2X4V0B1Q9QS6X",
 								"run_id": "01KPZ2GTK23KKQBD1Y3NYYHC8E",
-								"state": "failed",
-								"status": "Failed",
+								"status": "failed",
 								"is_terminal": True,
 								"message": (
 									"Report generation failed for an unexpected "
