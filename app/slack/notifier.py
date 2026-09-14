@@ -1,11 +1,17 @@
 """Service for sending direct messages to Slack users."""
 
 import logging
+from typing import cast
 
 from slack_sdk import WebClient
 
+from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.utils import log_and_raise, validate
+from app.slack.constants import (
+	SLACK_USER_EMAIL_CACHE_KEY,
+	SLACK_USER_EMAIL_CACHE_TTL,
+)
 
 
 class SlackNotifierService:
@@ -64,6 +70,16 @@ class SlackNotifierService:
 				resolved.
 
 		"""
+		# Slack sends only the user ID, never the email, so this lookup is
+		# unavoidable -- cached because the picker needs it per keystroke.
+		cache_key = SLACK_USER_EMAIL_CACHE_KEY.format(user_id=user_id)
+		try:
+			cached = redis_client.get(cache_key)
+			if cached:
+				return cast("str", cached)
+		except Exception as exc:
+			self.logger.warning("Could not read cached email for %s: %s", user_id, exc)
+
 		try:
 			response = self.client.users_info(user=user_id)
 
@@ -71,7 +87,23 @@ class SlackNotifierService:
 				self.logger.warning(f"Error looking up user info: {response['error']}")
 				return None
 
-			return response.get("user", {}).get("profile", {}).get("email")
+			email = response.get("user", {}).get("profile", {}).get("email")
+
+			if email:
+				try:
+					redis_client.set(
+						cache_key,
+						email,
+						ex=SLACK_USER_EMAIL_CACHE_TTL,
+					)
+				except Exception as exc:
+					self.logger.warning(
+						"Could not cache email for %s: %s",
+						user_id,
+						exc,
+					)
+
+			return email
 
 		except Exception as exc:
 			log_and_raise(
@@ -162,3 +194,144 @@ class SlackNotifierService:
 				exception_type=exc.__class__,
 				cause=exc,
 			)
+
+	def update_message(
+		self,
+		channel_id: str,
+		ts: str,
+		text: str,
+		blocks: list[dict] | None = None,
+	) -> bool:
+		"""Replace an already-posted message in place.
+
+		Lets an in-progress placeholder become the finished result in place.
+
+		Args:
+			channel_id (str): Channel the message lives in.
+			ts (str): Timestamp identifying the message to update.
+			text (str): New plain-text/mrkdwn fallback.
+			blocks (list[dict] | None): New Block Kit blocks.
+
+		Returns:
+			bool: True if updated, False if Slack rejected it.
+
+		"""
+		validate(channel_id, str)
+		validate(ts, str)
+		validate(text, str)
+
+		try:
+			response = self.client.chat_update(
+				channel=channel_id,
+				ts=ts,
+				text=text,
+				blocks=blocks,
+			)
+		except Exception as exc:
+			self.logger.warning(
+				"Could not update message %s in %s: %s",
+				ts,
+				channel_id,
+				exc,
+			)
+			return False
+
+		if not response["ok"]:
+			self.logger.warning(
+				"Could not update message %s in %s: %s",
+				ts,
+				channel_id,
+				response["error"],
+			)
+			return False
+
+		return True
+
+	def delete_message(self, channel_id: str, ts: str) -> bool:
+		"""Remove a message the bot posted earlier.
+
+		Clears an in-progress placeholder once the real result is posted.
+
+		Args:
+			channel_id (str): Channel the message lives in.
+			ts (str): Timestamp identifying the message to delete.
+
+		Returns:
+			bool: True if deleted, False if Slack rejected it.
+
+		"""
+		validate(channel_id, str)
+		validate(ts, str)
+
+		try:
+			response = self.client.chat_delete(channel=channel_id, ts=ts)
+		except Exception as exc:
+			# A leftover placeholder is untidy but must never fail delivery.
+			self.logger.warning(
+				"Could not delete message %s in %s: %s",
+				ts,
+				channel_id,
+				exc,
+			)
+			return False
+
+		if not response["ok"]:
+			self.logger.warning(
+				"Could not delete message %s in %s: %s",
+				ts,
+				channel_id,
+				response["error"],
+			)
+			return False
+
+		return True
+
+	def post_to_channel(
+		self,
+		channel_id: str,
+		text: str,
+		blocks: list[dict] | None = None,
+	) -> str | None:
+		"""Post a visible message to a channel.
+
+		The bot holds `chat:write` only, so this works in channels it has been
+		invited to and fails elsewhere. Failure is expected, not exceptional:
+		it returns None so the caller can fall back to `response_url`.
+
+		Args:
+			channel_id (str): Target channel ID, from the interaction payload.
+			text (str): Plain-text/mrkdwn fallback message.
+			blocks (list[dict] | None): Optional Block Kit blocks.
+
+		Returns:
+			str | None: The posted message's timestamp, which `update_message`
+				needs to replace it later, or None if Slack rejected the post
+				(e.g. the bot isn't in the channel).
+
+		"""
+		validate(channel_id, str)
+		validate(text, str)
+
+		try:
+			response = self.client.chat_postMessage(
+				channel=channel_id,
+				text=text,
+				blocks=blocks,
+			)
+		except Exception as exc:
+			self.logger.warning(
+				"Could not post to channel %s: %s",
+				channel_id,
+				exc,
+			)
+			return None
+
+		if not response["ok"]:
+			self.logger.warning(
+				"Could not post to channel %s: %s",
+				channel_id,
+				response["error"],
+			)
+			return None
+
+		return str(response["ts"])

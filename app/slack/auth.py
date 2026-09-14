@@ -2,7 +2,9 @@
 
 import hashlib
 import hmac
+import posixpath
 import time
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import Header, Request
 
@@ -10,6 +12,37 @@ from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 
 _MAX_REQUEST_AGE_SECONDS = 60 * 5
+
+# `response_url` arrives inside a signed request but is still caller-supplied
+# data, so its host is validated before any outbound POST (CodeQL: SSRF).
+_SLACK_RESPONSE_URL_HOSTS = ("hooks.slack.com", "hooks.slack-gov.com")
+
+
+def safe_slack_response_url(url: str) -> str | None:
+	"""Rebuild a Slack `response_url` from validated parts, or None if unsafe.
+
+	Returns a newly built URL rather than the caller's string, so the scheme and
+	host are ours by construction -- only path and query survive from the input.
+	Parsing beats prefix-matching: `https://hooks.slack.com/` as a plain prefix
+	also matches `hooks.slack.com.evil.com`.
+	"""
+	try:
+		parsed = urlsplit(url)
+	except ValueError:
+		return None
+
+	if parsed.scheme != "https" or parsed.username or parsed.password:
+		return None
+
+	host = next((h for h in _SLACK_RESPONSE_URL_HOSTS if parsed.hostname == h), None)
+	if host is None:
+		return None
+
+	path = posixpath.normpath(parsed.path or "/")
+	if not path.startswith("/"):
+		return None
+
+	return urlunsplit(("https", host, path, parsed.query, ""))
 
 
 async def verify_slack_signature(

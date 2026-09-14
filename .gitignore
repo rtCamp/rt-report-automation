@@ -19,3 +19,6 @@ wheels/
 
 # macOS files
 .DS_Store
+
+# Local scripts
+scripts/

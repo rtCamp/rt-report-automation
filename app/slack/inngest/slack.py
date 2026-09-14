@@ -12,6 +12,7 @@ from app.core.utils import to_unix_inclusive_date_range, validate
 from app.frappe.constants import PROJECT_MANAGER_FIELD
 from app.frappe.service import FrappeService
 from app.llm.models.summarization import ProjectMetadata, SlackMetadata
+from app.slack.auth import safe_slack_response_url
 from app.slack.constants import SLACK_API_RATE_LIMIT
 from app.slack.notifier import SlackNotifierService
 from app.slack.service import SlackService
@@ -20,8 +21,9 @@ from app.slack.utils.helpers import (
 	_filter_projects,
 	_format_missing_fields,
 	_format_multiple_matches,
+	_format_no_project_access,
 	_format_projects_list,
-	_resolve_delivery_manager_override,
+	_resolve_privileged_project_override,
 	_send_project_audit,
 )
 
@@ -106,10 +108,12 @@ async def handle_pms_command(ctx: inngest.Context):
 	missing-fields report, or a full per-project audit.
 
 	For "audit" specifically: if `project_filter` doesn't match any of the
-	requester's own PM'd projects, and they hold the Delivery Manager Frappe
-	role, they can still audit that project by its exact ID (see
-	`_resolve_delivery_manager_override`) -- lets a Delivery Manager check
-	in on any project without being its PM.
+	requester's own PM'd projects, and they hold one of
+	`PROJECT_AUDIT_OVERRIDE_ROLES` (Delivery Manager or Sales Manager), they
+	can still audit that project by its exact ID (see
+	`_resolve_privileged_project_override`) -- lets a Delivery Manager check
+	in on any project they oversee, and a CSM review any project they're
+	asked about, without being its PM.
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
@@ -135,7 +139,11 @@ async def handle_pms_command(ctx: inngest.Context):
 	blocks: list[dict] | None = None
 
 	if not email:
-		text = "Couldn't resolve your email from your Slack profile."
+		text = (
+			"⚠️ Couldn't read your email from your Slack profile, so there's no "
+			"way to match you to Next PMS.\n"
+			"Add a work email to your Slack profile, then try again."
+		)
 	else:
 		try:
 			frappe_service = FrappeService()
@@ -144,17 +152,22 @@ async def handle_pms_command(ctx: inngest.Context):
 			if project_filter:
 				projects = _filter_projects(projects, str(project_filter))
 
+			access_outcome = None
 			if not projects and project_filter and subcommand == "audit":
-				override_project = await _resolve_delivery_manager_override(
+				(
+					access_outcome,
+					override_project,
+				) = await _resolve_privileged_project_override(
 					frappe_service, email, str(project_filter)
 				)
 				if override_project:
 					projects = [override_project]
 
 			if project_filter and not projects:
-				text = (
-					f"🤷 No project matching '{project_filter}' found among "
-					"your projects."
+				text = _format_no_project_access(
+					str(project_filter),
+					subcommand,
+					access_outcome,
 				)
 			elif subcommand == "projects":
 				text, blocks = _format_projects_list(projects, user_id)
@@ -175,6 +188,21 @@ async def handle_pms_command(ctx: inngest.Context):
 			ctx.logger.error(f"Error building /pms response for {user_id}: {exc}")
 			text = "⚠️ Something went wrong reaching Next PMS. Please try again shortly."
 
+	# Requests from the project picker carry the channel they came from. The
+	# picker itself is ephemeral and Slack fixes a message's visibility for
+	# life, so the report has to be a NEW channel message rather than a reply
+	# through that response_url -- otherwise it stays private to the one
+	# person who ran the command.
+	channel_id = str(event_data.get("channel_id") or "")
+	pending_ts = str(event_data.get("pending_ts") or "")
+
+	if pending_ts and notifier.post_to_channel(channel_id, text, blocks):
+		# The report is now in the channel; clear the in-progress card that
+		# was standing in for it, so the "building..." state doesn't linger
+		# above the finished report.
+		notifier.delete_message(channel_id, pending_ts)
+		return
+
 	payload: dict[str, object] = {
 		"response_type": "in_channel",
 		"text": text,
@@ -183,8 +211,13 @@ async def handle_pms_command(ctx: inngest.Context):
 	if blocks:
 		payload["blocks"] = blocks
 
-	async with httpx.AsyncClient() as client:
-		response = await client.post(response_url, json=payload)
+	safe_url = safe_slack_response_url(response_url)
+	if not safe_url:
+		ctx.logger.error("Refusing to POST /pms response to non-Slack response_url")
+		return
+
+	async with httpx.AsyncClient(follow_redirects=False) as client:
+		response = await client.post(safe_url, json=payload)
 
 	if response.status_code >= 400:
 		# httpx doesn't raise for non-2xx by default -- an expired response_url

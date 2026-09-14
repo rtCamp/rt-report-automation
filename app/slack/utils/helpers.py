@@ -8,15 +8,17 @@ definitions rather than ~1400 lines of Block Kit formatting logic.
 
 import asyncio
 import datetime
+import json
 import logging
 import re
+from enum import StrEnum
 
 import inngest
 
 from app.core.config import settings
 from app.frappe.constants import (
 	BOOLEAN_FIELDS,
-	DELIVERY_MANAGER_ROLE,
+	PROJECT_AUDIT_OVERRIDE_ROLES,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_BUDGET_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -34,6 +36,11 @@ from app.frappe.constants import (
 from app.frappe.service import FrappeService
 from app.github.services.github_data import GitHubDataService
 from app.github.utils.constants import BLOCKED_ISSUE_STATUS_NAME
+from app.slack.constants import (
+	AUDIT_PROJECT_SELECT_ACTION_ID,
+	SLACK_MAX_SELECT_OPTIONS,
+	SLACK_OPTION_TEXT_LIMIT,
+)
 from app.slack.notifier import SlackNotifierService
 
 logger = logging.getLogger(__name__)
@@ -297,6 +304,194 @@ def _format_multiple_matches(projects: list[dict], project_filter: str) -> str:
 		f"🤷 '{project_filter}' matched {len(projects)} projects — "
 		f"an audit needs exactly one. Use the exact project ID:\n{matches}"
 	)
+
+
+def _format_no_project_access(
+	project_filter: str,
+	subcommand: str,
+	outcome: "ProjectAccessOutcome | None" = None,
+) -> str:
+	"""Explain why a project couldn't be returned (#185).
+
+	A bad ID, a missing role, and a PM-scoped subcommand each need different
+	copy -- one shared message would send people to the wrong fix.
+
+	Args:
+		project_filter (str): What the requester typed.
+		subcommand (str): The /pms subcommand that was run.
+		outcome (ProjectAccessOutcome | None): Result of the privileged
+			override, when one was attempted. ``None`` for subcommands that
+			don't consult it.
+
+	Returns:
+		str: Slack mrkdwn explaining the outcome and the next step.
+
+	"""
+	if outcome is ProjectAccessOutcome.PROJECT_NOT_FOUND:
+		return (
+			f"🔍 No project with ID `{project_filter}` exists in Next PMS.\n"
+			"Check the ID and try again — `/pms projects` lists the ones "
+			"you manage."
+		)
+
+	if outcome is ProjectAccessOutcome.NOT_PRIVILEGED:
+		roles = " or ".join(f"*{r}*" for r in sorted(PROJECT_AUDIT_OVERRIDE_ROLES))
+		return (
+			f"🔒 You don't have access to `{project_filter}`.\n"
+			"You can audit projects you manage; auditing any other project "
+			f"needs the {roles} role in Next PMS.\n"
+			"Ask an admin to grant it, or request the audit from the "
+			"project's manager."
+		)
+
+	# No override attempted -- `projects`/`missing-fields` are always PM-scoped.
+	return (
+		f"🤷 No project matching '{project_filter}' found among your projects.\n"
+		f"`/pms {subcommand}` only covers projects where you're the project "
+		"manager."
+	)
+
+
+def _project_option(project: dict) -> dict:
+	"""Build one Slack select option for a project.
+
+	Truncated to Slack's 75-char option limit, which rejects the whole payload.
+	"""
+	label = f"{project['project_name']} · {project['name']}"
+	if len(label) > SLACK_OPTION_TEXT_LIMIT:
+		keep = SLACK_OPTION_TEXT_LIMIT - len(project["name"]) - len(" · ") - 1
+		label = f"{project['project_name'][:keep]}… · {project['name']}"
+
+	return {
+		"text": {"type": "plain_text", "text": label, "emoji": True},
+		"value": project["name"],
+	}
+
+
+def _format_project_options(projects: list[dict]) -> list[dict]:
+	"""Build the option list for the project-picker menu."""
+	return [_project_option(p) for p in projects[:SLACK_MAX_SELECT_OPTIONS]]
+
+
+def _format_project_picker() -> tuple[str, list[dict]]:
+	"""Build the `/pms audit` project picker (issue #185's Example Flow).
+
+	`external_select` so Slack calls back as the user types: there are far more
+	active projects than its 100-option ceiling.
+
+	Returns:
+		tuple[str, list[dict]]: Fallback text and the Block Kit blocks.
+
+	"""
+	blocks = [
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*Which project would you like to audit?*",
+			},
+			"accessory": {
+				"type": "external_select",
+				"action_id": AUDIT_PROJECT_SELECT_ACTION_ID,
+				"placeholder": {
+					"type": "plain_text",
+					"text": "Search projects…",
+					"emoji": True,
+				},
+				"min_query_length": 0,
+			},
+		},
+		{
+			"type": "context",
+			"elements": [
+				{
+					"type": "mrkdwn",
+					"text": (
+						"💡 Start typing a project name or ID to filter. "
+						"You can also run `/pms audit <PROJECT-ID>` directly."
+					),
+				}
+			],
+		},
+	]
+	return "Which project would you like to audit?", blocks
+
+
+def _format_audit_pending(
+	project_label: str,
+	project_id: str,
+	*,
+	rich: bool = True,
+) -> tuple[str, list[dict]]:
+	"""Build the "working on it" message shown the instant a project is picked.
+
+	The audit takes several seconds (Frappe lookups, GitHub issues, an LLM
+	call for tips), so this replaces the picker immediately and says what is
+	happening rather than leaving the user looking at a menu that appears to
+	have done nothing.
+
+	Args:
+		project_label (str): Human-readable project name, echoed back by
+			Slack in the selected option so no extra lookup is needed.
+		project_id (str): The Frappe project ID being audited.
+		rich (bool): Use the `task_card` block, which renders Slack's own
+			in-progress indicator. Only set this for messages delivered via
+			`chat.postMessage`; pass False for anything sent to a
+			`response_url`, which silently drops the whole message when it
+			can't render a block rather than reporting an error.
+
+	Returns:
+		tuple[str, list[dict]]: Fallback text and Block Kit blocks.
+
+	"""
+	# Option labels are "Name · PROJ-0000"; strip the ID, it gets its own line.
+	project_name = project_label.split(" · ")[0].strip() or project_id
+
+	detail = "Gathering milestones, todos, risks and GitHub activity"
+	fallback = f"⏳ Building audit: {project_name} ({project_id})…"
+
+	if not rich:
+		return (
+			fallback,
+			[
+				# Mirrors the report's header so this reads as its early state.
+				_header_block(f"🗂️ Audit: {project_name}"),
+				{
+					"type": "section",
+					"text": {
+						"type": "mrkdwn",
+						"text": f"`{project_id}` · ⏳ _Building…_",
+					},
+				},
+				{
+					"type": "context",
+					"elements": [{"type": "mrkdwn", "text": detail}],
+				},
+			],
+		)
+
+	blocks = [
+		{
+			# `task_card` renders Slack's own in-progress indicator, so the
+			# wait reads as active work rather than a frozen line of text.
+			"type": "task_card",
+			"task_id": f"audit-{project_id}",
+			"status": "in_progress",
+			"title": f"Audit: {project_name}",
+			"details": {
+				"type": "rich_text",
+				"elements": [
+					{
+						"type": "rich_text_section",
+						"elements": [
+							{"type": "text", "text": f"{project_id} · {detail}"},
+						],
+					}
+				],
+			},
+		},
+	]
+	return fallback, blocks
 
 
 def _quote(text: str) -> str:
@@ -1576,21 +1771,108 @@ async def _build_audit_report(
 	)
 
 
-async def _resolve_delivery_manager_override(
+class ProjectAccessOutcome(StrEnum):
+	"""Why a privileged-override lookup succeeded or failed."""
+
+	GRANTED = "granted"
+	NOT_PRIVILEGED = "not_privileged"
+	PROJECT_NOT_FOUND = "project_not_found"
+
+
+def _parse_interaction_payload(raw: object) -> dict:
+	"""Parse Slack's form-encoded `payload` field, tolerating junk."""
+	try:
+		parsed = json.loads(str(raw or "{}"))
+	except (TypeError, ValueError):
+		logger.warning("Ignoring malformed Slack interaction payload")
+		return {}
+	return parsed if isinstance(parsed, dict) else {}
+
+
+async def _lookup_picker_projects(user_id: str, query: str) -> list[dict]:
+	"""Resolve the requester and return the projects they may audit."""
+	# get_user_email uses the blocking Slack SDK -- off-thread so a slow call
+	# can't stall the event loop for every other request.
+	email = await asyncio.to_thread(SlackNotifierService().get_user_email, user_id)
+	if not email:
+		logger.warning(f"Could not resolve email for Slack user {user_id}")
+		return []
+
+	return await _search_projects_for_user(FrappeService(), email, query)
+
+
+async def _search_projects_for_user(
+	frappe_service: FrappeService, email: str, query: str
+) -> list[dict]:
+	"""Return the projects a user may audit, matching `query`.
+
+	Mirrors the audit's own access rules so the picker never offers a project
+	the requester would then be refused.
+
+	Args:
+		frappe_service (FrappeService): Service for the lookups.
+		email (str): The requester's email (Frappe User `name`).
+		query (str): Free text typed into the picker.
+
+	Returns:
+		list[dict]: Matching projects, each with `name` and `project_name`.
+
+	"""
+	roles = await frappe_service.get_user_roles(email)
+
+	if PROJECT_AUDIT_OVERRIDE_ROLES.intersection(roles):
+		return await frappe_service.search_projects(query)
+
+	# PM-scoped: their own list is small, so filter it in-process rather
+	# than paying for a second Frappe round-trip.
+	own_projects = await frappe_service.get_projects_by_manager_email(email)
+	if not query:
+		return own_projects
+
+	# Substring, unlike `_filter_projects`: a picker gets partial IDs.
+	needle = query.lower()
+	return [
+		p
+		for p in own_projects
+		if needle in p["name"].lower() or needle in p["project_name"].lower()
+	]
+
+
+async def _resolve_privileged_project_override(
 	frappe_service: FrappeService, email: str, project_filter: str
-) -> dict | None:
-	"""Let a Delivery Manager audit any project by exact ID, even if they're not its PM.
+) -> tuple[ProjectAccessOutcome, dict | None]:
+	"""Let a privileged role audit any project by exact ID, even if not its PM.
+
+	Privileged roles are `PROJECT_AUDIT_OVERRIDE_ROLES` -- Delivery Manager
+	(checking in on any project they oversee) and Sales Manager (so CSMs can
+	review any project they're asked about).
 
 	Only called as a fallback when the requester isn't already the PM of a
 	matching project (the common case) -- the role lookup costs an extra
 	Frappe call, so it's skipped entirely unless needed. Requires an exact
 	project ID match rather than the fuzzy name search PM-scoped lookups
 	get, since there's no bounded "my projects" list to search within.
+
+	Args:
+		frappe_service (FrappeService): Service used for the role and
+			project lookups.
+		email (str): The requester's email (Frappe User `name`).
+		project_filter (str): Exact project ID to resolve.
+
+	Returns:
+		tuple[ProjectAccessOutcome, dict | None]: The outcome and, when
+			`GRANTED`, the resolved project document.
+
 	"""
 	roles = await frappe_service.get_user_roles(email)
-	if DELIVERY_MANAGER_ROLE not in roles:
-		return None
-	return await frappe_service.get_project_by_id(project_filter)
+	if not PROJECT_AUDIT_OVERRIDE_ROLES.intersection(roles):
+		return ProjectAccessOutcome.NOT_PRIVILEGED, None
+
+	project = await frappe_service.get_project_by_id(project_filter)
+	if not project:
+		return ProjectAccessOutcome.PROJECT_NOT_FOUND, None
+
+	return ProjectAccessOutcome.GRANTED, project
 
 
 async def _send_project_audit(email: str, text: str, blocks: list[dict]) -> dict:

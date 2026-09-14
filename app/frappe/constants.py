@@ -8,9 +8,24 @@ PROJECT_MANAGER_FIELD = "custom_project_manager"
 # Labeled "Lead Engineer" in the Next PMS UI, "Engineering Manager" in Frappe.
 PROJECT_ENGINEERING_MANAGER_FIELD = "custom_engineering_manager"
 
-# Grants /pms audit access to any project by exact ID, even if not its PM.
-DELIVERY_MANAGER_ROLE = "Delivery Manager"
 USER_DOCTYPE = "User"
+
+# Read directly: production strips child tables the API user can't read, so
+# the parent User document's inline `roles` key comes back silently empty.
+HAS_ROLE_DOCTYPE = "Has Role"
+
+# Frappe roles that grant /pms audit access to any project by exact ID, even
+# when the requester isn't that project's PM:
+#   - Delivery Manager: checks in on any project they oversee.
+#   - Sales Manager: lets CSMs review any project they're asked about (#185).
+DELIVERY_MANAGER_ROLE = "Delivery Manager"
+SALES_MANAGER_ROLE = "Sales Manager"
+PROJECT_AUDIT_OVERRIDE_ROLES = frozenset({DELIVERY_MANAGER_ROLE, SALES_MANAGER_ROLE})
+
+# Cached to keep the role lookup off the picker's per-keystroke path. Short
+# TTL so a granted or revoked role takes effect within minutes.
+USER_ROLES_CACHE_KEY = "frappe:user_roles:{email}"
+USER_ROLES_CACHE_TTL = 300
 
 PROJECT_BILLING_TYPE_FIELD = "custom_billing_type"
 NON_BILLABLE_TYPE = "Non-Billable"
