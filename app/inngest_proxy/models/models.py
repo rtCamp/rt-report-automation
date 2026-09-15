@@ -93,5 +93,10 @@ class RunStatusResponse(BaseModel):
 	)
 	raw: dict[str, Any] | None = Field(
 		default=None,
-		description="The unmodified Inngest run record, for debugging.",
+		description=(
+			"The unmodified Inngest run record. Debug aid, omitted unless the "
+			"deployment runs with DEBUG enabled -- it carries full stack "
+			"traces and unbounded step output, which `technical_detail` "
+			"deliberately strips and truncates for user-facing use."
+		),
 	)

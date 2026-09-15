@@ -172,6 +172,19 @@ class InngestProxyService:
 				action=action,
 			)
 
+		if error is not None:
+			# The response only carries the stripped, truncated detail, so the
+			# full record -- stack trace and all -- has to land in the server
+			# logs or the trace ID the user copies leads nowhere.
+			logger.error(
+				"Inngest run %s (event %s) ended as %s [%s]: %r",
+				run_id,
+				event_id,
+				status.value,
+				error.error_code.value,
+				run,
+			)
+
 		return RunStatusResponse(
 			event_id=event_id,
 			run_id=run_id,
@@ -184,7 +197,10 @@ class InngestProxyService:
 			error=error,
 			started_at=run.get("run_started_at"),
 			ended_at=run.get("ended_at"),
-			raw=run,
+			# Stack traces and unbounded step output must not ride along on
+			# every poll of a user-facing response -- `technical_detail` is the
+			# bounded, stack-free version. Kept for local debugging only.
+			raw=run if settings.DEBUG else None,
 		)
 
 	@staticmethod
