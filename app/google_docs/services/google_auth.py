@@ -87,6 +87,15 @@ class GoogleAuthService:
 
 		return self._credentials
 
+	@property
+	def service_account_email(self) -> str:
+		"""The address a Drive folder must be shared with for reports to work."""
+		try:
+			info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_KEY.get_secret_value())
+		except (json.JSONDecodeError, ValueError):
+			return "the report service account"
+		return str(info.get("client_email") or "the report service account")
+
 	def get_drive_service(self) -> Resource:
 		"""Get an authenticated Google Drive API service.
 
