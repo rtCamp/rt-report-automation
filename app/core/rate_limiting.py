@@ -1,5 +1,10 @@
 """Rate limiting utilities for FastAPI routes."""
 
+# TODO(namankhare): https://github.com/rtCamp/rt-report-automation/issues/190
+# Nothing in the app uses `limiter` or `rate_limit` yet, so the API currently
+# has no rate limiting. Wiring it up needs `app.state.limiter`, a
+# `RateLimitExceeded` handler and `SlowAPIMiddleware` registered in main.py.
+
 from collections.abc import Callable
 from typing import Any, TypeVar
 
