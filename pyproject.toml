@@ -1,7 +1,7 @@
 [project]
-name = "fast-api-template"
+name = "rt-report-automation"
 version = "0.1.0"
-description = "Add your description here"
+description = "A microservice to automate the generation and distribution of rt reports."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
