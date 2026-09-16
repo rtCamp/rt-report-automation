@@ -30,8 +30,10 @@ PMS_USAGE_TEXT = (
 SLACK_USER_EMAIL_CACHE_KEY = "slack:user_email:{user_id}"
 SLACK_USER_EMAIL_CACHE_TTL = 86400
 
-# TODO(sainathpoojary): https://github.com/rtCamp/rt-report-automation/issues/11
-# After standardizing the workflow name, update it here.
+# Legacy workflow name. Standup threads are now matched on the "standup" and
+# "tracker" keywords in SlackService._filter_messages_by_workflow, so this
+# exact name only still matters as a fallback for older messages posted
+# before the naming was standardized.
 STANDUP_WORKFLOW_NAME = "AI Internal - Daily Tasks Tracker"
 
 # Standardized question keys - always in the same order
@@ -71,15 +73,6 @@ NEW_FORMAT_PATTERNS = {
 	"blockers": ["any blockers encountered"],
 	"demo": ["anything youd like to demo internally"],
 }
-
-# ============================================================================
-# Old Format Constants (DEPRECATED)
-# ============================================================================
-
-# TODO(rutviksavsani): Remove old format constants once we have enough new format
-# content to test LLM summarization and prompts. Necessary until then to ensure
-# sufficient data for LLM processing.
-# https://github.com/rtCamp/rt-report-automation/issues
 
 # Old format question patterns (DEPRECATED)
 OLD_FORMAT_PATTERNS = {
