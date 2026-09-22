@@ -19,7 +19,7 @@ def format_to_yymmdd(iso_date: str) -> str:
 		str: The formatted date string in 'YYYY-MM-DD' format.
 
 	"""
-	date = datetime.fromisoformat(iso_date.replace("Z", "+00:00"))
+	date = datetime.fromisoformat(iso_date)
 
 	yy = date.year
 	mm = f"{date.month:02d}"

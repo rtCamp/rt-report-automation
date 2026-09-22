@@ -13,7 +13,7 @@ inngest_client = inngest.Inngest(
 )
 
 
-def setup_inngest(app: FastAPI, functions: list[Any] = []):
+def setup_inngest(app: FastAPI, functions: list[Any] | None = None):
 	"""Set up Inngest with FastAPI.
 
 	Args:
@@ -22,4 +22,4 @@ def setup_inngest(app: FastAPI, functions: list[Any] = []):
 
 
 	"""
-	inngest.fast_api.serve(app, inngest_client, functions)
+	inngest.fast_api.serve(app, inngest_client, functions or [])

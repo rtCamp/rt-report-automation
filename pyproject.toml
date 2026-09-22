@@ -1,7 +1,7 @@
 [project]
-name = "fast-api-template"
+name = "rt-report-automation"
 version = "0.1.0"
-description = "Add your description here"
+description = "A microservice to automate the generation and distribution of rt reports."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -47,6 +47,9 @@ lint.ignore = [
 	"D203", # Incompatible with D211; we prefer no blank line before class
 	"D213", # Incompatible with D212; we prefer summary on first line
 	"COM812", # Conflicts with formatter
+	"BLE001", # Blind `except Exception` is deliberate here -- paired with
+	          # log_and_raise/a logged fallback throughout the codebase.
+	"B008", # FastAPI's own Depends()-as-default-argument idiom; not a bug.
 ]
 lint.extend-select = [
 	"D",   # Docstring rules

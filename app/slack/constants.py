@@ -4,8 +4,36 @@
 # 50+ RPM limit (60 calls total) but burst behavior should handle it.
 SLACK_API_RATE_LIMIT = 2
 
-# TODO(sainathpoojary): https://github.com/rtCamp/rt-report-automation/issues/11
-# After standardizing the workflow name, update it here.
+# Echoed back by Slack on options requests and selections, so the interaction
+# handler can tell this menu apart from any future one.
+AUDIT_PROJECT_SELECT_ACTION_ID = "audit_project_select"
+
+# Slack rejects the whole Block Kit payload if either is exceeded.
+SLACK_OPTION_TEXT_LIMIT = 75
+SLACK_MAX_SELECT_OPTIONS = 100
+
+# Slack drops the options response at 3s; stay under it so a slow upstream
+# yields an empty menu rather than nothing at all.
+OPTIONS_TIME_BUDGET_SECONDS = 2.5
+
+# /pms subcommands, and the usage text shown for anything else.
+PMS_SUBCOMMANDS = frozenset({"projects", "missing-fields", "audit"})
+PMS_USAGE_TEXT = (
+	"Usage: `/pms projects`, `/pms missing-fields`, or `/pms audit`. "
+	"`missing-fields` can optionally take a project name or ID to filter to a "
+	"single project, e.g. `/pms missing-fields PROJ-0669`. `audit` opens a "
+	"project picker, or takes an ID directly, e.g. `/pms audit PROJ-0669`."
+)
+
+# A user ID maps to the same email indefinitely; cached to keep the lookup
+# off the picker's per-keystroke path.
+SLACK_USER_EMAIL_CACHE_KEY = "slack:user_email:{user_id}"
+SLACK_USER_EMAIL_CACHE_TTL = 86400
+
+# Legacy workflow name. Standup threads are now matched on the "standup" and
+# "tracker" keywords in SlackService._filter_messages_by_workflow, so this
+# exact name only still matters as a fallback for older messages posted
+# before the naming was standardized.
 STANDUP_WORKFLOW_NAME = "AI Internal - Daily Tasks Tracker"
 
 # Standardized question keys - always in the same order
@@ -45,15 +73,6 @@ NEW_FORMAT_PATTERNS = {
 	"blockers": ["any blockers encountered"],
 	"demo": ["anything youd like to demo internally"],
 }
-
-# ============================================================================
-# Old Format Constants (DEPRECATED)
-# ============================================================================
-
-# TODO(rutviksavsani): Remove old format constants once we have enough new format
-# content to test LLM summarization and prompts. Necessary until then to ensure
-# sufficient data for LLM processing.
-# https://github.com/rtCamp/rt-report-automation/issues
 
 # Old format question patterns (DEPRECATED)
 OLD_FORMAT_PATTERNS = {

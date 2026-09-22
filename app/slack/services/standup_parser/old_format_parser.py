@@ -1,10 +1,4 @@
-"""Parser for old format standup messages (DEPRECATED).
-
-TODO(rutviksavsani): Remove this parser once we have enough new format content to test
-LLM summarization and prompts. The old parser is necessary until then to
-ensure we have sufficient data for LLM processing. Use NewFormatParser instead.
-https://github.com/rtCamp/rt-report-automation/issues
-"""
+"""Parser for old format standup messages (DEPRECATED)."""
 
 from app.slack.constants import OLD_FORMAT_PATTERNS
 from app.slack.services.standup_parser.base import BaseParser
@@ -12,12 +6,6 @@ from app.slack.services.standup_parser.base import BaseParser
 
 class OldFormatParser(BaseParser):
 	"""Parser for old format standup messages (DEPRECATED).
-
-	This parser is kept for backward compatibility only.
-	TODO(rutviksavsani): Remove once we have enough new format content to test LLM
-	summarization and prompts. Necessary until then to ensure sufficient
-	data for LLM processing.
-	https://github.com/rtCamp/rt-report-automation/issues
 
 	Deprecated: Use NewFormatParser instead.
 	"""

@@ -24,16 +24,20 @@ logger = logging.getLogger(__name__)
 _CRITICAL_PATTERNS: list[tuple[str, str]] = [
 	# "ignore [all] previous/prior/above/earlier/all instructions/rules/prompts"
 	(
-		r"ignore\s+(all\s+)?(previous|prior|above|earlier|all)"
-		r"\s+(instructions?|rules?|prompts?)",
+		(
+			r"ignore\s+(all\s+)?(previous|prior|above|earlier|all)"
+			r"\s+(instructions?|rules?|prompts?)"
+		),
 		"",
 	),
 	# "forget everything/all/prior/previous instructions"
 	(r"forget\s+(everything|all|prior|previous|instructions?)", ""),
 	# "disregard previous/prior/above/all instructions/context/rules"
 	(
-		r"disregard\s+(previous|prior|above|all)"
-		r"\s+(instructions?|context|rules?)",
+		(
+			r"disregard\s+(previous|prior|above|all)"
+			r"\s+(instructions?|context|rules?)"
+		),
 		"",
 	),
 	# developer / debug / admin / sudo / root mode
