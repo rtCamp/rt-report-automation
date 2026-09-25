@@ -14,6 +14,10 @@ MAX_DOC_ID_LENGTH = 255  # Maximum length to prevent ReDoS attacks
 # Folder management
 DEFAULT_MAX_RECURSION_DEPTH = 10  # Maximum depth for recursive folder search
 
+# Drive hides what the caller can't see, so a 404 here means "not shared"
+# rather than "deleted". The search and the parent probe must agree on these.
+DRIVE_INACCESSIBLE_STATUSES = (403, 404)
+
 AUTOMATED_DOCS_FOLDER_NAME = "Automated Docs"
 
 # Project status colors (RGB format for Google Docs API)

@@ -10,6 +10,7 @@ from app.google_docs.services.google_auth import GoogleAuthService
 from app.google_docs.utils.constants import (
 	AUTOMATED_DOCS_FOLDER_NAME,
 	DEFAULT_MAX_RECURSION_DEPTH,
+	DRIVE_INACCESSIBLE_STATUSES,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ class FolderManagerService:
 
 		except HttpError as e:
 			# Log warning for permission/access issues but continue searching
-			if e.resp.status in [403, 404]:
+			if e.resp.status in DRIVE_INACCESSIBLE_STATUSES:
 				logger.warning(
 					f"Access denied or folder not found {parent_folder_id}: {e}",
 				)
@@ -156,7 +157,29 @@ class FolderManagerService:
 			Exception: If folder is not found or API call errors occur.
 
 		"""
-		drive_service = self.auth_service.get_drive_service()
+		drive_service: Any = self.auth_service.get_drive_service()
+
+		# Checked first because the recursive search swallows 403/404: an
+		# unshared parent would otherwise be reported as a missing subfolder.
+		try:
+			drive_service.files().get(
+				fileId=parent_folder_id,
+				fields="id",
+				supportsAllDrives=True,
+			).execute()
+		except HttpError as exc:
+			# Relabelling a 5xx as a sharing problem sends the user to fix
+			# the wrong thing, so only report what this probe can detect.
+			if exc.resp.status not in DRIVE_INACCESSIBLE_STATUSES:
+				raise
+
+			log_and_raise(
+				logger,
+				f"Cannot access Drive folder {parent_folder_id}. Share it with "
+				f"{self.auth_service.service_account_email} first.",
+				Exception,
+				cause=exc,
+			)
 
 		# Try to find the folder recursively
 		folder_id = self._search_folder_recursive(
