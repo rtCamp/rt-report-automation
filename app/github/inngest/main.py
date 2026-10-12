@@ -1,6 +1,6 @@
 """Inngest functions for GitHub integration."""
 
-import datetime
+import datetime as dt
 
 import inngest
 from pydantic import ValidationError
@@ -21,7 +21,7 @@ from app.llm.models.summarization import GitHubMetadata, ProjectMetadata
 	retries=GITHUB_SERVICE_FAILURE_MAX_RETRY_LIMIT,
 	throttle=inngest.Throttle(
 		limit=GITHUB_API_RATE_LIMIT,
-		period=datetime.timedelta(minutes=1),
+		period=dt.timedelta(minutes=1),
 	),
 )
 async def fetch_github_issues(ctx: inngest.Context) -> str:

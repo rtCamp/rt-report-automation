@@ -7,7 +7,7 @@ definitions rather than ~1400 lines of Block Kit formatting logic.
 """
 
 import asyncio
-import datetime
+import datetime as dt
 import json
 import logging
 import re
@@ -531,8 +531,8 @@ def _categorize_todos(tasks: list[dict]) -> dict[str, list[dict]]:
 	# `exp_end_date` is a date-only Frappe field (no time component) --
 	# compared as calendar dates, not datetimes, so an item due today isn't
 	# marked overdue for most of the day it's actually still due.
-	today = datetime.datetime.now(datetime.UTC).date()
-	soon = today + datetime.timedelta(days=_TODO_UPCOMING_WINDOW_DAYS)
+	today = dt.datetime.now(dt.UTC).date()
+	soon = today + dt.timedelta(days=_TODO_UPCOMING_WINDOW_DAYS)
 	buckets: dict[str, list[dict]] = {
 		"overdue": [],
 		"no_deadline": [],
@@ -550,7 +550,7 @@ def _categorize_todos(tasks: list[dict]) -> dict[str, list[dict]]:
 		if not exp_end_date:
 			buckets["no_deadline"].append(task)
 		else:
-			deadline = datetime.date.fromisoformat(exp_end_date[:10])
+			deadline = dt.date.fromisoformat(exp_end_date[:10])
 			if deadline < today:
 				buckets["overdue"].append(task)
 			elif deadline <= soon:
@@ -829,8 +829,8 @@ def _categorize_milestones(milestones: list[dict]) -> dict[str, list[dict]]:
 	# `exp_end_date` is a date-only Frappe field -- compared as calendar
 	# dates, not datetimes, so a milestone due today isn't marked overdue
 	# for most of the day it's actually still due.
-	today = datetime.datetime.now(datetime.UTC).date()
-	horizon = today + datetime.timedelta(days=_MILESTONE_SUPPRESS_DAYS)
+	today = dt.datetime.now(dt.UTC).date()
+	horizon = today + dt.timedelta(days=_MILESTONE_SUPPRESS_DAYS)
 	buckets: dict[str, list[dict]] = {
 		"overdue_open": [],
 		"upcoming": [],
@@ -848,7 +848,7 @@ def _categorize_milestones(milestones: list[dict]) -> dict[str, list[dict]]:
 		if not exp_end_date:
 			buckets["no_deadline"].append(milestone)
 		else:
-			deadline = datetime.date.fromisoformat(exp_end_date[:10])
+			deadline = dt.date.fromisoformat(exp_end_date[:10])
 			if deadline < today:
 				buckets["overdue_open"].append(milestone)
 			elif deadline <= horizon:
@@ -868,7 +868,7 @@ def _has_milestone_in_month_window(milestones: list[dict]) -> bool:
 	condition, so it's checked across the full unfiltered list rather than
 	one of `_categorize_milestones`'s buckets.
 	"""
-	now = datetime.datetime.now(datetime.UTC).date()
+	now = dt.datetime.now(dt.UTC).date()
 	next_month = now.month + 1
 	next_year = now.year
 	if next_month > 12:
@@ -880,7 +880,7 @@ def _has_milestone_in_month_window(milestones: list[dict]) -> bool:
 		exp_end_date = milestone.get("exp_end_date")
 		if not exp_end_date:
 			continue
-		due = datetime.date.fromisoformat(exp_end_date[:10])
+		due = dt.date.fromisoformat(exp_end_date[:10])
 		if (due.year, due.month) in month_year_pairs:
 			return True
 	return False
@@ -1114,8 +1114,8 @@ def _categorize_github_issues(issues: list[dict]) -> dict[str, list[dict]]:
 	`target_date` is that board's "Target date" field, not GitHub's
 	native issue milestone.
 	"""
-	now = datetime.datetime.now(datetime.UTC).date()
-	soon = now + datetime.timedelta(days=_GITHUB_UPCOMING_WINDOW_DAYS)
+	now = dt.datetime.now(dt.UTC).date()
+	soon = now + dt.timedelta(days=_GITHUB_UPCOMING_WINDOW_DAYS)
 	buckets: dict[str, list[dict]] = {
 		"blocked": [],
 		"fast_pending": [],
@@ -1138,7 +1138,7 @@ def _categorize_github_issues(issues: list[dict]) -> dict[str, list[dict]]:
 				buckets["no_date"].append(issue)
 			continue
 
-		due = datetime.date.fromisoformat(target_date)
+		due = dt.date.fromisoformat(target_date)
 		if due < now:
 			buckets["fast_pending"].append(issue)
 		elif due <= soon:
@@ -1280,13 +1280,13 @@ def _current_budget_cycle(budget_rows: list[dict]) -> dict | None:
 	if not budget_rows:
 		return None
 
-	today = datetime.datetime.now(datetime.UTC).date()
+	today = dt.datetime.now(dt.UTC).date()
 	for row in budget_rows:
 		start, end = row.get("start_date"), row.get("end_date")
 		if not start or not end:
 			continue
-		start_date = datetime.date.fromisoformat(start)
-		end_date = datetime.date.fromisoformat(end)
+		start_date = dt.date.fromisoformat(start)
+		end_date = dt.date.fromisoformat(end)
 		if start_date <= today <= end_date:
 			return row
 
@@ -1296,7 +1296,7 @@ def _current_budget_cycle(budget_rows: list[dict]) -> dict | None:
 	past = [
 		row
 		for row in budget_rows
-		if row.get("end_date") and datetime.date.fromisoformat(row["end_date"]) < today
+		if row.get("end_date") and dt.date.fromisoformat(row["end_date"]) < today
 	]
 	return max(past, key=lambda row: row["end_date"]) if past else None
 
@@ -1323,11 +1323,11 @@ def _format_budget_section(project_detail: dict, *, is_retainer: bool) -> list[d
 		remaining_hours = hours_purchased - consumed_hours
 	consumed_pct = consumed_hours / hours_purchased * 100
 
-	today = datetime.datetime.now(datetime.UTC).date()
+	today = dt.datetime.now(dt.UTC).date()
 	start_date = cycle.get("start_date")
 	end_date = cycle.get("end_date")
-	start = datetime.date.fromisoformat(start_date) if start_date else None
-	end = datetime.date.fromisoformat(end_date) if end_date else None
+	start = dt.date.fromisoformat(start_date) if start_date else None
+	end = dt.date.fromisoformat(end_date) if end_date else None
 
 	lines = [
 		(

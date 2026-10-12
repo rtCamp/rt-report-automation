@@ -1,7 +1,7 @@
 """Inngest function for LLM-based summarization using stuff/map-reduce strategy."""
 
 import asyncio
-import datetime
+import datetime as dt
 import json
 
 import inngest
@@ -29,7 +29,7 @@ from app.llm.services import MapReduceSummarizationService, StuffService
 	retries=2,
 	throttle=inngest.Throttle(
 		limit=MIN_PROVIDER_API_RATE_LIMIT,
-		period=datetime.timedelta(minutes=1),
+		period=dt.timedelta(minutes=1),
 	),
 )
 @observe(name="summarization_workflow")

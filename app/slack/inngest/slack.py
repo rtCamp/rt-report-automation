@@ -1,6 +1,6 @@
 """Inngest functions for Slack integration."""
 
-import datetime
+import datetime as dt
 import logging
 
 import httpx
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 	retries=2,
 	throttle=inngest.Throttle(
 		limit=SLACK_API_RATE_LIMIT,
-		period=datetime.timedelta(minutes=1),
+		period=dt.timedelta(minutes=1),
 	),
 )
 async def fetch_slack(ctx: inngest.Context):
