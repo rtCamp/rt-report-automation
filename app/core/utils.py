@@ -1,6 +1,6 @@
 """Utility functions for the application."""
 
-import datetime
+import datetime as dt
 import logging
 from typing import Any, NoReturn, TypeGuard, TypeVar
 
@@ -9,7 +9,7 @@ from fastapi import HTTPException
 T = TypeVar("T")
 
 
-def to_unix(dt):
+def to_unix(value):
 	"""Convert date/datetime/int values to a Unix timestamp (seconds).
 
 	Conversion rules:
@@ -17,28 +17,28 @@ def to_unix(dt):
 	- date: interpreted as 00:00:00 UTC on that date
 	- datetime: timezone-aware values keep their tz; naive values are treated as UTC
 	"""
-	if isinstance(dt, int):
-		return dt
+	if isinstance(value, int):
+		return value
 
-	if isinstance(dt, datetime.datetime):
-		if dt.tzinfo is None:
-			dt = dt.replace(tzinfo=datetime.UTC)
-		return int(dt.timestamp())
+	if isinstance(value, dt.datetime):
+		if value.tzinfo is None:
+			value = value.replace(tzinfo=dt.UTC)
+		return int(value.timestamp())
 
-	if isinstance(dt, datetime.date):
-		dt_utc = datetime.datetime.combine(
-			dt,
-			datetime.time.min,
-			tzinfo=datetime.UTC,
+	if isinstance(value, dt.date):
+		dt_utc = dt.datetime.combine(
+			value,
+			dt.time.min,
+			tzinfo=dt.UTC,
 		)
 		return int(dt_utc.timestamp())
 
-	raise TypeError(f"Unsupported type for to_unix: {type(dt).__name__}")
+	raise TypeError(f"Unsupported type for to_unix: {type(value).__name__}")
 
 
 def to_unix_inclusive_date_range(
-	start_date: datetime.date,
-	end_date: datetime.date,
+	start_date: dt.date,
+	end_date: dt.date,
 ) -> tuple[int, int]:
 	"""Convert date range to Unix timestamps with inclusive end-date semantics.
 
@@ -52,7 +52,7 @@ def to_unix_inclusive_date_range(
 		raise ValueError("start_date must be less than or equal to end_date")
 
 	start_ts = to_unix(start_date)
-	end_ts = to_unix(end_date + datetime.timedelta(days=1))
+	end_ts = to_unix(end_date + dt.timedelta(days=1))
 	return start_ts, end_ts
 
 

@@ -1,7 +1,7 @@
 """Controller for the Slack /pms slash command and the PMS bulk audit trigger."""
 
 import asyncio
-import datetime
+import datetime as dt
 
 import httpx
 import inngest
@@ -282,7 +282,7 @@ async def handle_interaction(request: Request):
 )
 async def trigger_bulk_audit(project_id: str | None = None, *, dry_run: bool = False):
 	"""Queue a run of `run_all_project_audits` and acknowledge immediately."""
-	today = datetime.datetime.now(datetime.UTC).date()
+	today = dt.datetime.now(dt.UTC).date()
 	# "project:"/"unscoped" prefixes keep a scoped run's dedup id structurally
 	# distinct from the daily unscoped run's -- a project literally named
 	# "all" would otherwise collide with a bare sentinel and dedupe against it

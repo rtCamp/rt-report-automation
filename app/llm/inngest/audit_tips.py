@@ -1,7 +1,7 @@
 """Inngest function for LLM-generated /pms audit tips."""
 
 import asyncio
-import datetime
+import datetime as dt
 import json
 
 import inngest
@@ -29,7 +29,7 @@ _AUDIT_TIPS_TEMPERATURE = 0.3
 	retries=1,
 	throttle=inngest.Throttle(
 		limit=MIN_PROVIDER_API_RATE_LIMIT,
-		period=datetime.timedelta(minutes=1),
+		period=dt.timedelta(minutes=1),
 	),
 )
 @observe(name="audit_tips_workflow")

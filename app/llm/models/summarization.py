@@ -1,6 +1,6 @@
 """Schemas for LLM-based summarization requests and responses."""
 
-import datetime
+import datetime as dt
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -20,12 +20,12 @@ class ProjectStatus(StrEnum):
 class ProjectMetadata(BaseModel):
 	"""Project metadata schema."""
 
-	start_date: datetime.date = Field(
+	start_date: dt.date = Field(
 		description="Start date of the report",
 		examples=["2025-08-25"],
 	)
 
-	end_date: datetime.date = Field(
+	end_date: dt.date = Field(
 		description="End date of the report",
 		examples=["2025-09-03"],
 	)
