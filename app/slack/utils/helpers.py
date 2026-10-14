@@ -41,6 +41,7 @@ from app.slack.constants import (
 	SLACK_MAX_SELECT_OPTIONS,
 	SLACK_OPTION_TEXT_LIMIT,
 )
+from app.slack.models.timesheets import TimesheetQuery
 from app.slack.notifier import SlackNotifierService
 
 logger = logging.getLogger(__name__)
@@ -415,6 +416,36 @@ def _format_project_picker() -> tuple[str, list[dict]]:
 		},
 	]
 	return "Which project would you like to audit?", blocks
+
+
+def _format_timesheet_query_ack(query: TimesheetQuery) -> str:
+	"""Echo back a parsed `/pms timesheets` request in plain words.
+
+	Args:
+		query (TimesheetQuery): The validated request.
+
+	Returns:
+		str: mrkdwn text naming the action, targets, range and checks.
+
+	"""
+	noun = query.target_type if len(query.targets) > 1 else query.target_type[:-1]
+	targets = ", ".join(f"`{target}`" for target in query.targets)
+	day_word = "day" if query.days == 1 else "days"
+	summary = (
+		f"✅ Got it: *{query.action}* {len(query.targets)} {noun} ({targets}), "
+		f"{_format_day(query.from_date)} – {_format_day(query.to_date)} "
+		f"({query.days} {day_word})."
+	)
+	lines = [summary]
+	if query.checks:
+		lines.append(f"Checks: {', '.join(query.checks)}.")
+	lines.append("_Timesheet review isn't available yet, so nothing was fetched._")
+	return "\n".join(lines)
+
+
+def _format_day(day: dt.date) -> str:
+	"""Format a date as `21 Sep 2026` (no zero padding on any platform)."""
+	return f"{day.day} {day:%b %Y}"
 
 
 def _format_audit_pending(

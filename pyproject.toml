@@ -37,7 +37,16 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pyright>=1.1.404", "ruff>=0.12.10"]
+dev = [
+	"pyright>=1.1.404",
+	"pytest>=9.1.1",
+	"pytest-asyncio>=1.4.0",
+	"ruff>=0.12.10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 exclude = [".venv", "migrations"]
@@ -73,6 +82,10 @@ lint.extend-select = [
 	"FBT", # detect boolean traps
 	"N",   # enforce naming conventions, e.g. ClassName vs function_name
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names already say what they check; docstrings would only repeat them.
+"tests/**" = ["D103"]
 
 [tool.ruff.format]
 indent-style = "tab"
