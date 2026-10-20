@@ -9,14 +9,29 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.logger import logger
 
 from app.core.adapters import inngest_client
+from app.core.adapters.redis import redis_client
 from app.slack.auth import safe_slack_response_url, verify_slack_signature
 from app.slack.constants import (
+	ALLOCATION_DAYS_ACTION_ID,
+	ALLOCATION_DAYS_BLOCK_ID,
+	ALLOCATION_DECLINE_ACTION_ID,
+	ALLOCATION_EXTEND_ACTION_ID,
+	ALLOCATION_EXTEND_CALLBACK_ID,
+	ALLOCATION_EXTEND_MAX_DAYS,
+	ALLOCATION_REMINDED_TTL,
+	ALLOCATION_SUBMITTED_KEY,
 	AUDIT_PROJECT_SELECT_ACTION_ID,
 	OPTIONS_TIME_BUDGET_SECONDS,
 	PMS_SUBCOMMANDS,
 	PMS_USAGE_TEXT,
 )
 from app.slack.notifier import SlackNotifierService
+from app.slack.utils.allocation_blocks import (
+	build_extend_modal,
+	format_allocation_reminder,
+	format_reminder_outcome,
+	parse_extension_days,
+)
 from app.slack.utils.helpers import (
 	_format_audit_pending,
 	_format_project_options,
@@ -37,6 +52,11 @@ router = APIRouter(
 audit_router = APIRouter(
 	prefix="/audit",
 	tags=["PMS Bulk Audit"],
+)
+
+allocation_router = APIRouter(
+	prefix="/allocations",
+	tags=["Allocation Reminders"],
 )
 
 
@@ -159,8 +179,8 @@ async def handle_select_options(request: Request):
 	"/interactions",
 	summary="Slack interactive component callbacks",
 	description=(
-		"Receives project selections from the /pms audit picker and dispatches "
-		"the audit asynchronously."
+		"Receives /pms audit picker selections and allocation reminder "
+		"buttons and modals."
 	),
 )
 async def handle_interaction(request: Request):
@@ -173,8 +193,19 @@ async def handle_interaction(request: Request):
 	form = await request.form()
 	payload = _parse_interaction_payload(form.get("payload"))
 
+	if payload.get("type") == "view_submission":
+		view = payload.get("view") or {}
+		if view.get("callback_id") == ALLOCATION_EXTEND_CALLBACK_ID:
+			return await _submit_extension(payload)
+		return Response(status_code=200)
+
 	actions = payload.get("actions") or []
 	action = actions[0] if actions else {}
+
+	allocation_handler = _ALLOCATION_ACTION_HANDLERS.get(str(action.get("action_id")))
+	if allocation_handler:
+		await allocation_handler(payload, action)
+		return Response(status_code=200)
 
 	if action.get("action_id") != AUDIT_PROJECT_SELECT_ACTION_ID:
 		# Not ours -- ack so Slack shows no error.
@@ -262,6 +293,156 @@ async def handle_interaction(request: Request):
 
 	async with httpx.AsyncClient(follow_redirects=False) as client:
 		await client.post(safe_url, json=pending_payload)
+
+	return Response(status_code=200)
+
+
+def _reminder_message(payload: dict) -> tuple[str, str]:
+	"""Return the (channel_id, ts) of the message a button was clicked on."""
+	container = payload.get("container") or {}
+	return str(container.get("channel_id", "")), str(container.get("message_ts", ""))
+
+
+async def _decline_extension(payload: dict, action: dict) -> None:
+	"""Close the reminder without touching the allocation."""
+	ctx = _parse_interaction_payload(action.get("value"))
+	channel_id, message_ts = _reminder_message(payload)
+	text, blocks = format_reminder_outcome(
+		ctx,
+		"👍 Okay, the allocation stays unchanged.",
+	)
+	await asyncio.to_thread(
+		SlackNotifierService().update_message,
+		channel_id,
+		message_ts,
+		text,
+		blocks,
+	)
+
+
+async def _open_extend_modal(payload: dict, action: dict) -> None:
+	"""Open the duration modal for the reminder's allocation."""
+	ctx = _parse_interaction_payload(action.get("value"))
+	channel_id, message_ts = _reminder_message(payload)
+	ctx |= {"channel_id": channel_id, "message_ts": message_ts}
+	await asyncio.to_thread(
+		SlackNotifierService().open_view,
+		str(payload.get("trigger_id", "")),
+		build_extend_modal(ctx),
+	)
+
+
+async def _refresh_extend_preview(payload: dict, action: dict) -> None:
+	"""Re-render the modal's preview for the days typed so far."""
+	view = payload.get("view") or {}
+	ctx = _parse_interaction_payload(view.get("private_metadata"))
+	await asyncio.to_thread(
+		SlackNotifierService().update_view,
+		str(view.get("id", "")),
+		str(view.get("hash", "")),
+		build_extend_modal(ctx, action.get("value")),
+	)
+
+
+_ALLOCATION_ACTION_HANDLERS = {
+	ALLOCATION_EXTEND_ACTION_ID: _open_extend_modal,
+	ALLOCATION_DECLINE_ACTION_ID: _decline_extension,
+	ALLOCATION_DAYS_ACTION_ID: _refresh_extend_preview,
+}
+
+
+def _days_error(message: str) -> dict:
+	"""Show `message` under the modal's days input."""
+	return {"response_action": "errors", "errors": {ALLOCATION_DAYS_BLOCK_ID: message}}
+
+
+async def _submit_extension(payload: dict) -> dict:
+	"""Validate the duration modal and queue the extension."""
+	view = payload.get("view") or {}
+	ctx = _parse_interaction_payload(view.get("private_metadata"))
+	channel_id = str(ctx.pop("channel_id", ""))
+	message_ts = str(ctx.pop("message_ts", ""))
+	user_id = str((payload.get("user") or {}).get("id", ""))
+
+	state = (view.get("state") or {}).get("values") or {}
+	raw_days = (state.get(ALLOCATION_DAYS_BLOCK_ID) or {}).get(
+		ALLOCATION_DAYS_ACTION_ID,
+		{},
+	)
+	days = parse_extension_days(raw_days.get("value"))
+	if days is None:
+		return _days_error(
+			f"Enter a whole number of days from 1 to {ALLOCATION_EXTEND_MAX_DAYS}.",
+		)
+
+	submitted_key = ALLOCATION_SUBMITTED_KEY.format(
+		name=ctx["name"],
+		end_date=ctx["end"],
+	)
+	if not redis_client.set(
+		submitted_key, user_id, nx=True, ex=ALLOCATION_REMINDED_TTL
+	):
+		return _days_error("This allocation's extension has already been submitted.")
+
+	notifier = SlackNotifierService()
+	text, blocks = format_reminder_outcome(ctx, "⏳ Extending the allocation in ERP…")
+	await asyncio.to_thread(
+		notifier.update_message,
+		channel_id,
+		message_ts,
+		text,
+		blocks,
+	)
+
+	try:
+		await inngest_client.send(
+			inngest.Event(
+				name="rt-report-automation/extend_allocation",
+				data={
+					"user_id": user_id,
+					"allocation": ctx,
+					"days": days,
+					"channel_id": channel_id,
+					"message_ts": message_ts,
+				},
+			),
+		)
+	except Exception as e:
+		logger.error(f"Error sending extend_allocation event to Inngest: {e}")
+		redis_client.delete(submitted_key)
+		text, blocks = format_allocation_reminder(ctx)
+		await asyncio.to_thread(
+			notifier.update_message,
+			channel_id,
+			message_ts,
+			text,
+			blocks,
+		)
+		return _days_error("Couldn't start the extension. Please try again.")
+
+	return {"response_action": "clear"}
+
+
+@allocation_router.post(
+	"/remind",
+	summary="Send allocation-ending reminders now",
+	description=(
+		"Queues the same run as the daily cron: reminds PMs about allocations "
+		"ending in seven days. Pass `dry_run=true` to list them without sending."
+	),
+)
+async def trigger_allocation_reminders(*, dry_run: bool = False):
+	"""Queue a run of `send_allocation_reminders` and acknowledge immediately."""
+	try:
+		await inngest_client.send(
+			inngest.Event(
+				name="rt-report-automation/send_allocation_reminders",
+				data={"dry_run": dry_run},
+			),
+		)
+	except Exception as e:
+		logger.error(f"Error sending send_allocation_reminders event to Inngest: {e}")
+		return Response(status_code=502)
 
 	return Response(status_code=200)
 
