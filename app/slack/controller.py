@@ -15,12 +15,18 @@ from app.slack.constants import (
 	OPTIONS_TIME_BUDGET_SECONDS,
 	PMS_SUBCOMMANDS,
 	PMS_USAGE_TEXT,
+	TIMESHEET_USAGE_TEXT,
 )
 from app.slack.notifier import SlackNotifierService
+from app.slack.services.timesheet_parser import (
+	TimesheetQueryError,
+	parse_timesheet_command,
+)
 from app.slack.utils.helpers import (
 	_format_audit_pending,
 	_format_project_options,
 	_format_project_picker,
+	_format_timesheet_query_ack,
 	_lookup_picker_projects,
 	_parse_interaction_payload,
 )
@@ -70,6 +76,9 @@ async def handle_slash_command(request: Request):
 	if subcommand not in PMS_SUBCOMMANDS:
 		return {"response_type": "in_channel", "text": PMS_USAGE_TEXT}
 
+	if subcommand == "timesheets":
+		return _handle_timesheets_command(project_filter)
+
 	if subcommand == "audit" and not project_filter:
 		# `in_channel`, not ephemeral: Slack fixes a message's visibility for
 		# life, so an ephemeral picker would trap the finished report private.
@@ -112,6 +121,29 @@ async def handle_slash_command(request: Request):
 		}
 
 	return Response(status_code=200)
+
+
+def _handle_timesheets_command(args: str | None) -> dict:
+	"""Validate `/pms timesheets …` and reply to the requester only.
+
+	Ephemeral throughout: a typo or a confirmation only matters to the person
+	who typed it. Nothing is queued yet -- the review pipeline that consumes
+	the parsed query lands in later tickets, so a valid command is echoed back.
+	"""
+	if not args:
+		# Ticket #206 replaces this with the timesheet review modal.
+		return {"response_type": "ephemeral", "text": TIMESHEET_USAGE_TEXT}
+
+	try:
+		query = parse_timesheet_command(args)
+	except TimesheetQueryError as e:
+		logger.warning("Invalid timesheets command input: %s", e)
+		text = f"⚠️ {e}"
+		if e.show_usage:
+			text = f"{text}\n\n{TIMESHEET_USAGE_TEXT}"
+		return {"response_type": "ephemeral", "text": text}
+
+	return {"response_type": "ephemeral", "text": _format_timesheet_query_ack(query)}
 
 
 @router.post(
