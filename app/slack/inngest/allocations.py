@@ -1,5 +1,6 @@
 """Inngest functions for allocation-ending reminders and extensions."""
 
+import asyncio
 import datetime as dt
 import logging
 from zoneinfo import ZoneInfo
@@ -9,7 +10,12 @@ import inngest
 from app.core.adapters import inngest_client
 from app.core.adapters.redis import redis_client
 from app.core.utils import validate
-from app.frappe.constants import RESOURCE_ALLOCATION_DOCTYPE, RESOURCE_MANAGER_ROLES
+from app.frappe.constants import (
+	PROJECT_MANAGER_FIELD,
+	PROJECT_SUPPRESSED_STATUSES,
+	RESOURCE_ALLOCATION_DOCTYPE,
+	RESOURCE_MANAGER_ROLES,
+)
 from app.frappe.service import FrappeService, FrappeValidationError
 from app.slack.constants import (
 	ALLOCATION_CONTINUATION_WINDOW_DAYS,
@@ -52,11 +58,69 @@ async def _send_reminder(email: str, ctx: dict) -> dict:
 		return {"status": "already_sent"}
 
 	text, blocks = format_allocation_reminder(ctx)
-	if SlackNotifierService().send_message(email, text, blocks):
+	if await asyncio.to_thread(
+		SlackNotifierService().send_message, email, text, blocks
+	):
 		return {"status": "sent"}
 
 	redis_client.delete(key)
 	return {"status": "delivery_failed"}
+
+
+def _skip_reason(project: dict | None, roles: dict[str, list[str]]) -> str | None:
+	"""Why an allocation's PM shouldn't be reminded, or None if they should."""
+	if not project:
+		return "project not found"
+	if project["status"] in PROJECT_SUPPRESSED_STATUSES:
+		return f"project is {project['status']}"
+	email = project.get(PROJECT_MANAGER_FIELD)
+	if not email:
+		return "project has no project manager"
+	if not RESOURCE_MANAGER_ROLES.intersection(roles.get(email, [])):
+		return f"{email} has no allocation role in ERP"
+	return None
+
+
+async def _load_reminders() -> dict:
+	"""Find allocations ending in `ALLOCATION_REMINDER_LEAD_DAYS` days and their PMs.
+
+	Returns:
+		dict: `ends_on` (ISO date) and `reminders`, each with the allocation
+			`ctx`, the PM `email` and a `skip` reason (None when sendable).
+
+	"""
+	today = dt.datetime.now(ZoneInfo(ALLOCATION_TIMEZONE)).date()
+	ends_on = today + dt.timedelta(days=ALLOCATION_REMINDER_LEAD_DAYS)
+
+	frappe_service = FrappeService()
+	allocations = await frappe_service.get_allocations_ending_on(ends_on)
+	upcoming = await frappe_service.get_allocations_starting_between(
+		ends_on + dt.timedelta(days=1),
+		ends_on + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS),
+	)
+	allocations = [a for a in allocations if not _is_continued(a, upcoming)]
+
+	projects = await frappe_service.get_projects(
+		sorted({a["project"] for a in allocations}),
+	)
+	emails = {
+		p[PROJECT_MANAGER_FIELD]
+		for p in projects.values()
+		if p.get(PROJECT_MANAGER_FIELD)
+	}
+	roles = {email: await frappe_service.get_user_roles(email) for email in emails}
+
+	reminders = []
+	for allocation in allocations:
+		project = projects.get(allocation["project"])
+		reminders.append(
+			{
+				"ctx": allocation_context(allocation),
+				"email": (project or {}).get(PROJECT_MANAGER_FIELD),
+				"skip": _skip_reason(project, roles),
+			},
+		)
+	return {"ends_on": ends_on.isoformat(), "reminders": reminders}
 
 
 @inngest_client.create_function(
@@ -70,51 +134,50 @@ async def _send_reminder(email: str, ctx: dict) -> dict:
 async def send_allocation_reminders(ctx: inngest.Context) -> dict:
 	"""Remind PMs about allocations ending in `ALLOCATION_REMINDER_LEAD_DAYS` days.
 
+	Only a project's manager who holds an allocation role in ERP is reminded,
+	since only they can act on the reminder.
+
 	Args:
 		ctx (inngest.Context): The Inngest context. A manual run's event.data
 			may carry `dry_run` (bool) to list what would be sent without
 			sending anything.
 
 	Returns:
-		dict: `{"total": int, "sent": int, "skipped": int}` summary.
+		dict: `{"total": int, "sent": int, "skipped": int}` summary, plus
+			`recipients` on a dry run.
 
 	"""
 	event_data = ctx.event.data or {}
 	validate(event_data, dict)
 	dry_run = bool(event_data.get("dry_run"))
 
-	today = dt.datetime.now(ZoneInfo(ALLOCATION_TIMEZONE)).date()
-	ends_on = today + dt.timedelta(days=ALLOCATION_REMINDER_LEAD_DAYS)
+	loaded = await ctx.step.run("load", _load_reminders)
+	ends_on = loaded["ends_on"]
+	reminders = loaded["reminders"]
 
-	frappe_service = FrappeService()
-	allocations = await frappe_service.get_allocations_ending_on(ends_on)
-	upcoming = await frappe_service.get_allocations_starting_between(
-		ends_on + dt.timedelta(days=1),
-		ends_on + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS),
-	)
-	allocations = [a for a in allocations if not _is_continued(a, upcoming)]
-
-	managers = await frappe_service.get_project_managers(
-		sorted({a["project"] for a in allocations}),
-	)
+	for r in reminders:
+		if r["skip"]:
+			ctx.logger.warning(f"Skipping {r['ctx']['name']}: {r['skip']}")
 
 	if dry_run:
 		recipients = [
 			{
-				"allocation": a["name"],
-				"employee": a.get("employee_name") or a["employee"],
-				"project": a.get("project_name") or a["project"],
-				"pm": managers.get(a["project"]),
+				"allocation": r["ctx"]["name"],
+				"employee": r["ctx"]["employee_name"],
+				"project": r["ctx"]["project_name"],
+				"pm": r["email"],
+				"skip": r["skip"],
 			}
-			for a in allocations
+			for r in reminders
 		]
 		for r in recipients:
 			ctx.logger.info(
 				f"Dry run ({ends_on}): {r['allocation']} {r['employee']} on "
-				f"{r['project']} -> {r['pm'] or 'no PM, would skip'}"
+				f"{r['project']} -> {r['pm']}"
+				+ (f" (skip: {r['skip']})" if r["skip"] else ""),
 			)
 		return {
-			"total": len(allocations),
+			"total": len(reminders),
 			"sent": 0,
 			"skipped": 0,
 			"dry_run": True,
@@ -122,32 +185,27 @@ async def send_allocation_reminders(ctx: inngest.Context) -> dict:
 		}
 
 	sent = 0
-	for allocation in allocations:
-		email = managers.get(allocation["project"])
-		if not email:
-			ctx.logger.warning(
-				f"Skipping {allocation['name']}: project {allocation['project']} "
-				"has no project manager"
-			)
+	for r in reminders:
+		if r["skip"]:
 			continue
 
 		result = await ctx.step.run(
-			f"remind-{allocation['name']}",
+			f"remind-{r['ctx']['name']}",
 			_send_reminder,
-			email,
-			allocation_context(allocation),
+			r["email"],
+			r["ctx"],
 		)
 		if result["status"] == "sent":
 			sent += 1
 
 	ctx.logger.info(
 		f"Allocation reminders for {ends_on}: {sent} sent, "
-		f"{len(allocations) - sent} skipped, {len(allocations)} total"
+		f"{len(reminders) - sent} skipped, {len(reminders)} total"
 	)
 	return {
-		"total": len(allocations),
+		"total": len(reminders),
 		"sent": sent,
-		"skipped": len(allocations) - sent,
+		"skipped": len(reminders) - sent,
 	}
 
 
@@ -259,7 +317,13 @@ async def _show_outcome(
 	channel_id: str, message_ts: str, text: str, blocks: list
 ) -> bool:
 	"""Replace the reminder DM with the extension's outcome."""
-	return SlackNotifierService().update_message(channel_id, message_ts, text, blocks)
+	return await asyncio.to_thread(
+		SlackNotifierService().update_message,
+		channel_id,
+		message_ts,
+		text,
+		blocks,
+	)
 
 
 @inngest_client.create_function(
@@ -292,6 +356,12 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 	days = int(str(event_data["days"]))
 	channel_id = str(event_data["channel_id"])
 	message_ts = str(event_data["message_ts"])
+
+	text, blocks = format_reminder_outcome(
+		allocation,
+		"⏳ Extending the allocation in ERP…",
+	)
+	await ctx.step.run("pending", _show_outcome, channel_id, message_ts, text, blocks)
 
 	try:
 		outcome = await ctx.step.run(
@@ -354,3 +424,58 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 		blocks,
 	)
 	return {"status": outcome["status"]}
+
+
+async def _record_decline(user_id: str, ctx: dict) -> None:
+	"""Comment on the allocation who declined to extend it from Slack."""
+	email = await asyncio.to_thread(SlackNotifierService().get_user_email, user_id)
+	await FrappeService().add_comment(
+		RESOURCE_ALLOCATION_DOCTYPE,
+		ctx["name"],
+		(
+			f"Extension declined from Slack by {email or f'Slack user {user_id}'}: "
+			f"end date stays {ctx['end']}."
+		),
+	)
+
+
+@inngest_client.create_function(
+	fn_id="decline_allocation",
+	trigger=inngest.TriggerEvent(event="rt-report-automation/decline_allocation"),
+	retries=2,
+)
+async def decline_allocation(ctx: inngest.Context) -> dict:
+	"""Close a reminder whose PM chose not to extend, and note it in ERP.
+
+	Args:
+		ctx (inngest.Context): The Inngest context containing event.data with:
+			- user_id (str): Slack user ID of the PM who clicked No.
+			- allocation (dict): The allocation context from the reminder.
+			- channel_id (str), message_ts (str): The reminder DM.
+
+	Returns:
+		dict: `{"status": "declined"}`.
+
+	"""
+	event_data = ctx.event.data
+	validate(event_data, dict)
+
+	user_id = str(event_data["user_id"])
+	allocation = event_data["allocation"]
+	if not validate(allocation, dict):
+		raise TypeError("Expected dict for 'allocation'")
+
+	text, blocks = format_reminder_outcome(
+		allocation,
+		"👍 Okay, the allocation stays unchanged.",
+	)
+	await ctx.step.run(
+		"notify",
+		_show_outcome,
+		str(event_data["channel_id"]),
+		str(event_data["message_ts"]),
+		text,
+		blocks,
+	)
+	await ctx.step.run("record", _record_decline, user_id, allocation)
+	return {"status": "declined"}

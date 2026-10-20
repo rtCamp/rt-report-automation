@@ -93,9 +93,24 @@ def _reminder_details(ctx: dict) -> str:
 def _reminder_question(ctx: dict) -> str:
 	"""Build the reminder's question."""
 	return (
-		f"Would you like to continue {ctx['employee_name']} on "
-		f"{ctx['project_name']} next month at {ctx['hours']:g} hours per day?"
+		f"Would you like to extend {ctx['employee_name']} on "
+		f"{ctx['project_name']} at {ctx['hours']:g} hours per day?"
 	)
+
+
+def _project_button(ctx: dict) -> list[dict]:
+	"""Build the "View project in Next PMS" button, if the project ID is known."""
+	# Reminders sent before `project` was added to the context have no ID.
+	if not ctx.get("project"):
+		return []
+	return [
+		{
+			"type": "button",
+			"text": {"type": "plain_text", "text": "View project in Next PMS"},
+			"url": _project_overview_url(ctx["project"]),
+			"action_id": ALLOCATION_VIEW_PROJECT_ACTION_ID,
+		},
+	]
 
 
 def _reminder_actions(ctx: dict) -> dict:
@@ -115,17 +130,8 @@ def _reminder_actions(ctx: dict) -> dict:
 			"action_id": ALLOCATION_DECLINE_ACTION_ID,
 			"value": value,
 		},
+		*_project_button(ctx),
 	]
-	# Reminders sent before `project` was added to the context have no ID.
-	if ctx.get("project"):
-		elements.append(
-			{
-				"type": "button",
-				"text": {"type": "plain_text", "text": "View project in Next PMS"},
-				"url": _project_overview_url(ctx["project"]),
-				"action_id": ALLOCATION_VIEW_PROJECT_ACTION_ID,
-			},
-		)
 	return {"type": "actions", "elements": elements}
 
 
@@ -158,6 +164,8 @@ def format_reminder_outcome(
 	]
 	if retry:
 		blocks.append(_reminder_actions(ctx))
+	elif project_button := _project_button(ctx):
+		blocks.append({"type": "actions", "elements": project_button})
 	return outcome, blocks
 
 
@@ -179,11 +187,17 @@ def format_extension_success(
 			f"> *Duration:* {days} calendar days\n"
 			f"> *New allocation end date:* {_format_date(new_end)}",
 		),
-		_link_button(
-			"View allocation in ERP",
-			allocation_erp_url(ctx["name"]),
-			"view_allocation_in_erp",
-		),
+		{
+			"type": "actions",
+			"elements": [
+				*_link_button(
+					"View allocation in ERP",
+					allocation_erp_url(ctx["name"]),
+					"view_allocation_in_erp",
+				)["elements"],
+				*_project_button(ctx),
+			],
+		},
 		_context("The existing allocation has been updated."),
 	]
 	return f"✅ Allocation extended. {summary}", blocks

@@ -26,12 +26,7 @@ from app.slack.constants import (
 	PMS_USAGE_TEXT,
 )
 from app.slack.notifier import SlackNotifierService
-from app.slack.utils.allocation_blocks import (
-	build_extend_modal,
-	format_allocation_reminder,
-	format_reminder_outcome,
-	parse_extension_days,
-)
+from app.slack.utils.allocation_blocks import build_extend_modal, parse_extension_days
 from app.slack.utils.helpers import (
 	_format_audit_pending,
 	_format_project_options,
@@ -304,20 +299,24 @@ def _reminder_message(payload: dict) -> tuple[str, str]:
 
 
 async def _decline_extension(payload: dict, action: dict) -> None:
-	"""Close the reminder without touching the allocation."""
+	"""Queue closing the reminder without touching the allocation."""
 	ctx = _parse_interaction_payload(action.get("value"))
 	channel_id, message_ts = _reminder_message(payload)
-	text, blocks = format_reminder_outcome(
-		ctx,
-		"👍 Okay, the allocation stays unchanged.",
-	)
-	await asyncio.to_thread(
-		SlackNotifierService().update_message,
-		channel_id,
-		message_ts,
-		text,
-		blocks,
-	)
+	try:
+		await inngest_client.send(
+			inngest.Event(
+				name="rt-report-automation/decline_allocation",
+				data={
+					"user_id": str((payload.get("user") or {}).get("id", "")),
+					"allocation": ctx,
+					"channel_id": channel_id,
+					"message_ts": message_ts,
+				},
+			),
+		)
+	except Exception as e:
+		# The buttons stay, so the PM can click No again.
+		logger.error(f"Error sending decline_allocation event to Inngest: {e}")
 
 
 async def _open_extend_modal(payload: dict, action: dict) -> None:
@@ -384,16 +383,8 @@ async def _submit_extension(payload: dict) -> dict:
 	):
 		return _days_error("This allocation's extension has already been submitted.")
 
-	notifier = SlackNotifierService()
-	text, blocks = format_reminder_outcome(ctx, "⏳ Extending the allocation in ERP…")
-	await asyncio.to_thread(
-		notifier.update_message,
-		channel_id,
-		message_ts,
-		text,
-		blocks,
-	)
-
+	# Slack allows 3 seconds to answer, so the reminder is updated by the
+	# Inngest function rather than here.
 	try:
 		await inngest_client.send(
 			inngest.Event(
@@ -410,14 +401,6 @@ async def _submit_extension(payload: dict) -> dict:
 	except Exception as e:
 		logger.error(f"Error sending extend_allocation event to Inngest: {e}")
 		redis_client.delete(submitted_key)
-		text, blocks = format_allocation_reminder(ctx)
-		await asyncio.to_thread(
-			notifier.update_message,
-			channel_id,
-			message_ts,
-			text,
-			blocks,
-		)
 		return _days_error("Couldn't start the extension. Please try again.")
 
 	return {"response_action": "clear"}

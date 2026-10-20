@@ -23,6 +23,7 @@ from app.frappe.constants import (
 	PROJECT_MANAGER_FIELD,
 	PROJECT_SUPPRESSED_STATUSES,
 	PROJECT_TIMELINE_ITEM_DOCTYPE,
+	RESOURCE_ALLOCATION_CONFIRMED_STATUS,
 	RESOURCE_ALLOCATION_DOCTYPE,
 	RISK_DOCTYPE,
 	TODO_DOCTYPE,
@@ -41,7 +42,8 @@ def _frappe_error_message(response: httpx.Response) -> str:
 	try:
 		body = response.json()
 	except ValueError:
-		return response.text[:300] or f"HTTP {response.status_code}"
+		text = re.sub(r"<[^>]+>", " ", response.text)
+		return " ".join(text.split())[:300] or f"HTTP {response.status_code}"
 
 	messages = []
 	try:
@@ -479,7 +481,7 @@ class FrappeService:
 		)
 
 	async def get_allocations_ending_on(self, end_date: dt.date) -> list[dict]:
-		"""Fetch allocations with a project whose last day is `end_date`.
+		"""Fetch confirmed allocations with a project whose last day is `end_date`.
 
 		Args:
 			end_date (dt.date): The allocation end date to match.
@@ -495,6 +497,7 @@ class FrappeService:
 			[
 				["allocation_end_date", "=", end_date.isoformat()],
 				["project", "is", "set"],
+				["status", "=", RESOURCE_ALLOCATION_CONFIRMED_STATUS],
 			],
 			[
 				"name",
@@ -535,6 +538,27 @@ class FrappeService:
 			["name", "employee", "project", "allocation_start_date"],
 		)
 
+	async def get_projects(self, project_ids: list[str]) -> dict[str, dict]:
+		"""Map each project ID to its `name`, `status` and project manager.
+
+		Args:
+			project_ids (list[str]): Frappe Project `name`s.
+
+		Returns:
+			dict[str, dict]: Project ID -> record with `name`, `status` and
+				`PROJECT_MANAGER_FIELD`, for projects that exist.
+
+		"""
+		if not project_ids:
+			return {}
+
+		projects = await self._fetch_list(
+			PROJECT_DOCTYPE,
+			[["name", "in", project_ids]],
+			["name", "status", PROJECT_MANAGER_FIELD],
+		)
+		return {p["name"]: p for p in projects}
+
 	async def get_project_managers(self, project_ids: list[str]) -> dict[str, str]:
 		"""Map each project ID to its project manager's email.
 
@@ -545,17 +569,10 @@ class FrappeService:
 			dict[str, str]: Project ID -> PM email, for projects that have one.
 
 		"""
-		if not project_ids:
-			return {}
-
-		projects = await self._fetch_list(
-			PROJECT_DOCTYPE,
-			[["name", "in", project_ids]],
-			["name", PROJECT_MANAGER_FIELD],
-		)
+		projects = await self.get_projects(project_ids)
 		return {
-			p["name"]: p[PROJECT_MANAGER_FIELD]
-			for p in projects
+			name: p[PROJECT_MANAGER_FIELD]
+			for name, p in projects.items()
 			if p.get(PROJECT_MANAGER_FIELD)
 		}
 
