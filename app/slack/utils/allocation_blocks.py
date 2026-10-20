@@ -44,6 +44,8 @@ def allocation_context(allocation: dict) -> dict:
 		"project_name": allocation.get("project_name") or allocation["project"],
 		"end": str(allocation["allocation_end_date"]),
 		"hours": float(allocation.get("hours_allocated_per_day") or 0),
+		# ERP revision the PM saw; the extension is refused if it changed.
+		"modified": str(allocation["modified"]),
 	}
 
 

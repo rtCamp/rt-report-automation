@@ -25,7 +25,11 @@ ALLOCATION_EXTEND_MAX_DAYS = 365
 
 ALLOCATION_REMINDED_KEY = "allocation:reminded:{name}:{end_date}"
 ALLOCATION_REMINDED_TTL = 86400 * (ALLOCATION_REMINDER_LEAD_DAYS + 1)
-ALLOCATION_SUBMITTED_KEY = "allocation:extend_submitted:{name}:{end_date}"
+# One decision (extend or decline) per reminder; Yes and No race for it.
+ALLOCATION_DECISION_KEY = "allocation:decision:{name}:{end_date}"
+# Which run wrote an extension against a given allocation revision, so a
+# retry of that run can tell its own write from someone else's edit.
+ALLOCATION_APPLIED_KEY = "allocation:extend_applied:{name}:{revision}"
 ALLOCATION_EXTEND_LOCK_KEY = "allocation:extend_lock:{name}"
 ALLOCATION_EXTEND_LOCK_TTL = 300
 

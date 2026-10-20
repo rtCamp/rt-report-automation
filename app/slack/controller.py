@@ -14,12 +14,12 @@ from app.slack.auth import safe_slack_response_url, verify_slack_signature
 from app.slack.constants import (
 	ALLOCATION_DAYS_ACTION_ID,
 	ALLOCATION_DAYS_BLOCK_ID,
+	ALLOCATION_DECISION_KEY,
 	ALLOCATION_DECLINE_ACTION_ID,
 	ALLOCATION_EXTEND_ACTION_ID,
 	ALLOCATION_EXTEND_CALLBACK_ID,
 	ALLOCATION_EXTEND_MAX_DAYS,
 	ALLOCATION_REMINDED_TTL,
-	ALLOCATION_SUBMITTED_KEY,
 	AUDIT_PROJECT_SELECT_ACTION_ID,
 	OPTIONS_TIME_BUDGET_SECONDS,
 	PMS_SUBCOMMANDS,
@@ -298,16 +298,31 @@ def _reminder_message(payload: dict) -> tuple[str, str]:
 	return str(container.get("channel_id", "")), str(container.get("message_ts", ""))
 
 
+def _claim_decision(ctx: dict, decision: str) -> str | None:
+	"""Record this reminder's decision, returning its key, or None if already made."""
+	key = ALLOCATION_DECISION_KEY.format(name=ctx.get("name"), end_date=ctx.get("end"))
+	if redis_client.set(key, decision, nx=True, ex=ALLOCATION_REMINDED_TTL):
+		return key
+	return None
+
+
 async def _decline_extension(payload: dict, action: dict) -> None:
 	"""Queue closing the reminder without touching the allocation."""
 	ctx = _parse_interaction_payload(action.get("value"))
 	channel_id, message_ts = _reminder_message(payload)
+	user_id = str((payload.get("user") or {}).get("id", ""))
+
+	decision_key = _claim_decision(ctx, f"decline:{user_id}")
+	if not decision_key:
+		# Already extended or declined; that run updates the message.
+		return
+
 	try:
 		await inngest_client.send(
 			inngest.Event(
 				name="rt-report-automation/decline_allocation",
 				data={
-					"user_id": str((payload.get("user") or {}).get("id", "")),
+					"user_id": user_id,
 					"allocation": ctx,
 					"channel_id": channel_id,
 					"message_ts": message_ts,
@@ -317,6 +332,7 @@ async def _decline_extension(payload: dict, action: dict) -> None:
 	except Exception as e:
 		# The buttons stay, so the PM can click No again.
 		logger.error(f"Error sending decline_allocation event to Inngest: {e}")
+		redis_client.delete(decision_key)
 
 
 async def _open_extend_modal(payload: dict, action: dict) -> None:
@@ -374,14 +390,9 @@ async def _submit_extension(payload: dict) -> dict:
 			f"Enter a whole number of days from 1 to {ALLOCATION_EXTEND_MAX_DAYS}.",
 		)
 
-	submitted_key = ALLOCATION_SUBMITTED_KEY.format(
-		name=ctx["name"],
-		end_date=ctx["end"],
-	)
-	if not redis_client.set(
-		submitted_key, user_id, nx=True, ex=ALLOCATION_REMINDED_TTL
-	):
-		return _days_error("This allocation's extension has already been submitted.")
+	decision_key = _claim_decision(ctx, f"extend:{user_id}")
+	if not decision_key:
+		return _days_error("This reminder has already been answered.")
 
 	# Slack allows 3 seconds to answer, so the reminder is updated by the
 	# Inngest function rather than here.
@@ -400,7 +411,7 @@ async def _submit_extension(payload: dict) -> dict:
 		)
 	except Exception as e:
 		logger.error(f"Error sending extend_allocation event to Inngest: {e}")
-		redis_client.delete(submitted_key)
+		redis_client.delete(decision_key)
 		return _days_error("Couldn't start the extension. Please try again.")
 
 	return {"response_action": "clear"}

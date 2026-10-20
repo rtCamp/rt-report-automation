@@ -18,14 +18,15 @@ from app.frappe.constants import (
 )
 from app.frappe.service import FrappeService, FrappeValidationError
 from app.slack.constants import (
+	ALLOCATION_APPLIED_KEY,
 	ALLOCATION_CONTINUATION_WINDOW_DAYS,
+	ALLOCATION_DECISION_KEY,
 	ALLOCATION_EXTEND_LOCK_KEY,
 	ALLOCATION_EXTEND_LOCK_TTL,
 	ALLOCATION_REMINDED_KEY,
 	ALLOCATION_REMINDED_TTL,
 	ALLOCATION_REMINDER_CRON,
 	ALLOCATION_REMINDER_LEAD_DAYS,
-	ALLOCATION_SUBMITTED_KEY,
 	ALLOCATION_TIMEZONE,
 )
 from app.slack.notifier import SlackNotifierService
@@ -39,6 +40,14 @@ from app.slack.utils.allocation_blocks import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AllocationBusyError(Exception):
+	"""Another run holds the allocation's lock; raised so Inngest retries the step."""
+
+
+class SlackUpdateError(Exception):
+	"""Slack rejected a message update; raised so Inngest retries the step."""
 
 
 def _is_continued(allocation: dict, upcoming: list[dict]) -> bool:
@@ -58,9 +67,19 @@ async def _send_reminder(email: str, ctx: dict) -> dict:
 		return {"status": "already_sent"}
 
 	text, blocks = format_allocation_reminder(ctx)
-	if await asyncio.to_thread(
-		SlackNotifierService().send_message, email, text, blocks
-	):
+	try:
+		sent = await asyncio.to_thread(
+			SlackNotifierService().send_message,
+			email,
+			text,
+			blocks,
+		)
+	except Exception:
+		# Release the claim so Inngest's retry can deliver it.
+		redis_client.delete(key)
+		raise
+
+	if sent:
 		return {"status": "sent"}
 
 	redis_client.delete(key)
@@ -189,12 +208,16 @@ async def send_allocation_reminders(ctx: inngest.Context) -> dict:
 		if r["skip"]:
 			continue
 
-		result = await ctx.step.run(
-			f"remind-{r['ctx']['name']}",
-			_send_reminder,
-			r["email"],
-			r["ctx"],
-		)
+		try:
+			result = await ctx.step.run(
+				f"remind-{r['ctx']['name']}",
+				_send_reminder,
+				r["email"],
+				r["ctx"],
+			)
+		except Exception as exc:
+			ctx.logger.error(f"Could not remind about {r['ctx']['name']}: {exc}")
+			continue
 		if result["status"] == "sent":
 			sent += 1
 
@@ -219,29 +242,42 @@ async def _can_extend(frappe_service: FrappeService, email: str, project: str) -
 	return bool(RESOURCE_MANAGER_ROLES.intersection(roles))
 
 
-async def _apply_extension(user_id: str, ctx: dict, days: int) -> dict:
+def _acquire_lock(name: str, run_id: str) -> None:
+	"""Take the allocation's extension lock, re-entrant for retries of `run_id`.
+
+	Raises:
+		AllocationBusyError: If another run holds it.
+
+	"""
+	key = ALLOCATION_EXTEND_LOCK_KEY.format(name=name)
+	if redis_client.set(key, run_id, nx=True, ex=ALLOCATION_EXTEND_LOCK_TTL):
+		return
+	if redis_client.get(key) != run_id:
+		raise AllocationBusyError(f"{name} is being extended by another run")
+
+
+async def _apply_extension(run_id: str, user_id: str, ctx: dict, days: int) -> dict:
 	"""Re-check the allocation, extend it in ERP, and verify the saved change.
+
+	The write only goes ahead if the allocation is still at the revision the
+	reminder showed (`ctx["modified"]`), so any edit since -- end date, hours
+	or otherwise -- is reported instead of overwritten. A retry of the same
+	run recognises its own earlier write.
 
 	Returns:
 		dict: `{"status": ..., "message": str}` plus, when extended,
 			`email`, `new_end` and `hours`. Status is one of "extended",
-			"changed", "forbidden", "missing", "busy", "rejected" or
-			"unverified".
+			"changed", "forbidden", "missing", "rejected" or "unverified".
+
+	Raises:
+		AllocationBusyError: If another run is extending it; Inngest retries.
 
 	"""
-	old_end = dt.date.fromisoformat(ctx["end"])
-	_, new_end = extension_dates(old_end, days)
+	_, new_end = extension_dates(dt.date.fromisoformat(ctx["end"]), days)
 
-	lock_key = ALLOCATION_EXTEND_LOCK_KEY.format(name=ctx["name"])
-	if not redis_client.set(lock_key, user_id, nx=True, ex=ALLOCATION_EXTEND_LOCK_TTL):
-		return {
-			"status": "busy",
-			"message": "⏳ This allocation is already being extended. "
-			"Check back in a minute.",
-		}
-
+	_acquire_lock(ctx["name"], run_id)
 	try:
-		email = SlackNotifierService().get_user_email(user_id)
+		email = await asyncio.to_thread(SlackNotifierService().get_user_email, user_id)
 		if not email:
 			return {
 				"status": "forbidden",
@@ -265,17 +301,28 @@ async def _apply_extension(user_id: str, ctx: dict, days: int) -> dict:
 				"access in ERP, can extend this allocation. Nothing was changed.",
 			}
 
-		current_end = dt.date.fromisoformat(str(allocation["allocation_end_date"]))
-		if current_end != new_end:
-			if current_end != old_end:
+		applied_key = ALLOCATION_APPLIED_KEY.format(
+			name=ctx["name"],
+			revision=ctx.get("modified"),
+		)
+		replayed = (
+			redis_client.get(applied_key) == run_id
+			and str(allocation["allocation_end_date"]) == new_end.isoformat()
+		)
+		if not replayed:
+			if str(allocation["modified"]) != ctx.get("modified"):
 				return {
 					"status": "changed",
 					"message": format_allocation_changed(ctx, allocation),
 				}
 
+			# Marked before writing: a crash after the PUT still lets a retry
+			# of this run claim the change as its own.
+			redis_client.set(applied_key, run_id, ex=ALLOCATION_REMINDED_TTL)
 			try:
 				await frappe_service.extend_allocation(allocation, new_end)
 			except FrappeValidationError as exc:
+				redis_client.delete(applied_key)
 				return {
 					"status": "rejected",
 					"message": f"⚠️ ERP didn't extend the allocation: {exc}",
@@ -298,7 +345,7 @@ async def _apply_extension(user_id: str, ctx: dict, days: int) -> dict:
 			"hours": float(allocation.get("hours_allocated_per_day") or 0),
 		}
 	finally:
-		redis_client.delete(lock_key)
+		redis_client.delete(ALLOCATION_EXTEND_LOCK_KEY.format(name=ctx["name"]))
 
 
 async def _record_extension(ctx: dict, email: str, days: int, new_end: str) -> None:
@@ -315,15 +362,21 @@ async def _record_extension(ctx: dict, email: str, days: int, new_end: str) -> N
 
 async def _show_outcome(
 	channel_id: str, message_ts: str, text: str, blocks: list
-) -> bool:
-	"""Replace the reminder DM with the extension's outcome."""
-	return await asyncio.to_thread(
+) -> None:
+	"""Replace the reminder DM with the extension's outcome.
+
+	Raises:
+		SlackUpdateError: If Slack rejects the update, so Inngest retries.
+
+	"""
+	if not await asyncio.to_thread(
 		SlackNotifierService().update_message,
 		channel_id,
 		message_ts,
 		text,
 		blocks,
-	)
+	):
+		raise SlackUpdateError(f"Could not update message {message_ts}")
 
 
 @inngest_client.create_function(
@@ -361,12 +414,24 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 		allocation,
 		"⏳ Extending the allocation in ERP…",
 	)
-	await ctx.step.run("pending", _show_outcome, channel_id, message_ts, text, blocks)
+	try:
+		await ctx.step.run(
+			"pending",
+			_show_outcome,
+			channel_id,
+			message_ts,
+			text,
+			blocks,
+		)
+	except Exception as exc:
+		# Cosmetic only; the extension must still run.
+		ctx.logger.warning(f"Could not show pending state: {exc}")
 
 	try:
 		outcome = await ctx.step.run(
 			"extend",
 			_apply_extension,
+			ctx.run_id,
 			user_id,
 			allocation,
 			days,
@@ -404,7 +469,7 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 		retry = outcome["status"] == "rejected"
 		if retry:
 			redis_client.delete(
-				ALLOCATION_SUBMITTED_KEY.format(
+				ALLOCATION_DECISION_KEY.format(
 					name=allocation["name"],
 					end_date=allocation["end"],
 				),
@@ -469,13 +534,17 @@ async def decline_allocation(ctx: inngest.Context) -> dict:
 		allocation,
 		"👍 Okay, the allocation stays unchanged.",
 	)
-	await ctx.step.run(
-		"notify",
-		_show_outcome,
-		str(event_data["channel_id"]),
-		str(event_data["message_ts"]),
-		text,
-		blocks,
-	)
+	try:
+		await ctx.step.run(
+			"notify",
+			_show_outcome,
+			str(event_data["channel_id"]),
+			str(event_data["message_ts"]),
+			text,
+			blocks,
+		)
+	except Exception as exc:
+		# Still record the decline in ERP.
+		ctx.logger.error(f"Could not close reminder for {allocation['name']}: {exc}")
 	await ctx.step.run("record", _record_decline, user_id, allocation)
 	return {"status": "declined"}

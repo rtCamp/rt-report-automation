@@ -488,8 +488,8 @@ class FrappeService:
 
 		Returns:
 			list[dict]: Records with `name`, `employee`, `employee_name`,
-				`project`, `project_name`, `allocation_end_date` and
-				`hours_allocated_per_day`.
+				`project`, `project_name`, `allocation_end_date`,
+				`hours_allocated_per_day` and `modified`.
 
 		"""
 		return await self._fetch_list(
@@ -507,6 +507,7 @@ class FrappeService:
 				"project_name",
 				"allocation_end_date",
 				"hours_allocated_per_day",
+				"modified",
 			],
 		)
 
@@ -515,7 +516,7 @@ class FrappeService:
 		start: dt.date,
 		end: dt.date,
 	) -> list[dict]:
-		"""Fetch allocations whose first day falls within [start, end].
+		"""Fetch confirmed allocations whose first day falls within [start, end].
 
 		Args:
 			start (dt.date): Earliest start date, inclusive.
@@ -534,6 +535,7 @@ class FrappeService:
 					"between",
 					[start.isoformat(), end.isoformat()],
 				],
+				["status", "=", RESOURCE_ALLOCATION_CONFIRMED_STATUS],
 			],
 			["name", "employee", "project", "allocation_start_date"],
 		)
