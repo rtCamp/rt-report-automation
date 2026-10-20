@@ -13,9 +13,12 @@ from app.google_docs.inngest import fetch_previous_report, generate_google_doc
 from app.llm.inngest import generate_audit_tips, summarization, summarization_workflow
 from app.slack.inngest import (
 	audit_and_send_project,
+	decline_allocation,
+	extend_allocation,
 	fetch_slack,
 	handle_pms_command,
 	run_all_project_audits,
+	send_allocation_reminders,
 )
 
 configure_logging(log_level=LogLevels.info)
@@ -54,6 +57,9 @@ setup_inngest(
 		generate_audit_tips,
 		run_all_project_audits,
 		audit_and_send_project,
+		send_allocation_reminders,
+		extend_allocation,
+		decline_allocation,
 	],
 )
 

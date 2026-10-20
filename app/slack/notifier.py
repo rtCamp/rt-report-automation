@@ -286,6 +286,67 @@ class SlackNotifierService:
 
 		return True
 
+	def open_view(self, trigger_id: str, view: dict) -> bool:
+		"""Open a modal in response to a user interaction.
+
+		Args:
+			trigger_id (str): From the interaction payload; Slack honours it
+				for 3 seconds only.
+			view (dict): The modal view definition.
+
+		Returns:
+			bool: True if the modal opened, False if Slack rejected it.
+
+		"""
+		validate(trigger_id, str)
+
+		try:
+			response = self.client.views_open(trigger_id=trigger_id, view=view)
+		except Exception as exc:
+			self.logger.warning("Could not open modal: %s", exc)
+			return False
+
+		if not response["ok"]:
+			self.logger.warning("Could not open modal: %s", response["error"])
+			return False
+
+		return True
+
+	def update_view(self, view_id: str, view_hash: str, view: dict) -> bool:
+		"""Replace an open modal's content in place.
+
+		Args:
+			view_id (str): The open modal's ID.
+			view_hash (str): The modal's current hash, so a stale update is
+				rejected rather than overwriting a newer one.
+			view (dict): The new view definition.
+
+		Returns:
+			bool: True if updated, False if Slack rejected it.
+
+		"""
+		validate(view_id, str)
+
+		try:
+			response = self.client.views_update(
+				view_id=view_id,
+				hash=view_hash,
+				view=view,
+			)
+		except Exception as exc:
+			self.logger.warning("Could not update modal %s: %s", view_id, exc)
+			return False
+
+		if not response["ok"]:
+			self.logger.warning(
+				"Could not update modal %s: %s",
+				view_id,
+				response["error"],
+			)
+			return False
+
+		return True
+
 	def post_to_channel(
 		self,
 		channel_id: str,

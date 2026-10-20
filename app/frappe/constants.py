@@ -126,3 +126,18 @@ RISK_MITIGATED_STATUS = "Mitigated"
 RISK_BLOCKED_STATUS = "Blocked"
 # Lower sorts first: escalate High-risk items to the top of the open-risk list.
 RISK_LEVEL_ORDER = {"High": 0, "Medium": 1, "Low": 2}
+
+RESOURCE_ALLOCATION_DOCTYPE = "Resource Allocation"
+RESOURCE_ALLOCATION_CONFIRMED_STATUS = "Confirmed"
+COMMENT_DOCTYPE = "Comment"
+
+# Mirrors Next PMS's RESOURCE_MANAGER_ROLES.
+RESOURCE_MANAGER_ROLES = frozenset(
+	{
+		"Projects Manager",
+		"Projects User",
+		"Delivery Manager",
+		"Delivery User",
+		"System Manager",
+	},
+)
