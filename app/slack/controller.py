@@ -137,6 +137,7 @@ def _handle_timesheets_command(args: str | None) -> dict:
 	try:
 		query = parse_timesheet_command(args)
 	except TimesheetQueryError as e:
+		logger.warning("Invalid timesheets command input: %s", e)
 		text = f"⚠️ {e}"
 		if e.show_usage:
 			text = f"{text}\n\n{TIMESHEET_USAGE_TEXT}"
