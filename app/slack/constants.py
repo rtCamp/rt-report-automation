@@ -137,3 +137,11 @@ QUESTION_PATTERNS = {
 	)
 	for key in set(NEW_FORMAT_PATTERNS) | set(OLD_FORMAT_PATTERNS)
 }
+
+# Shown when the requester's Slack profile has no email -- shared by every
+# command that must match the requester to a Next PMS user.
+SLACK_EMAIL_UNREADABLE_TEXT = (
+	"⚠️ Couldn't read your email from your Slack profile, so there's no "
+	"way to match you to Next PMS.\n"
+	"Add a work email to your Slack profile, then try again."
+)

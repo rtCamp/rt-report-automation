@@ -10,6 +10,11 @@ PROJECT_ENGINEERING_MANAGER_FIELD = "custom_engineering_manager"
 
 USER_DOCTYPE = "User"
 
+# Employee `name` is the Employee ID (e.g. "EMP-001"); `user_id` links to the
+# Frappe User, whose `name` is the email.
+EMPLOYEE_DOCTYPE = "Employee"
+EMPLOYEE_FIELDS = ["name", "employee_name", "user_id", "company_email"]
+
 # Read directly: production strips child tables the API user can't read, so
 # the parent User document's inline `roles` key comes back silently empty.
 HAS_ROLE_DOCTYPE = "Has Role"

@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.core.utils import log_and_raise
 from app.frappe.constants import (
 	DOCSHARE_DOCTYPE,
+	EMPLOYEE_DOCTYPE,
+	EMPLOYEE_FIELDS,
 	GITHUB_REPOSITORY_DOCTYPE,
 	HAS_ROLE_DOCTYPE,
 	NON_BILLABLE_TYPE,
@@ -176,6 +178,7 @@ class FrappeService:
 		doctype: str,
 		filters: list,
 		fields: list[str],
+		or_filters: list | None = None,
 	) -> list[dict]:
 		"""Fetch a filtered, field-limited list of records for a doctype.
 
@@ -184,6 +187,8 @@ class FrappeService:
 			filters (list): Frappe list-view style filters, e.g.
 				``[["project", "=", "PROJ-0001"]]``.
 			fields (list[str]): Fieldnames to return for each record.
+			or_filters (list | None): Alternatives ANDed with `filters`; a
+				record matches if it satisfies any one of them.
 
 		Returns:
 			list[dict]: Matching records. Empty only if none match -- a
@@ -196,6 +201,8 @@ class FrappeService:
 			"fields": json.dumps(fields),
 			"limit_page_length": 0,
 		}
+		if or_filters:
+			params["or_filters"] = json.dumps(or_filters)
 
 		try:
 			async with httpx.AsyncClient() as client:
@@ -428,6 +435,63 @@ class FrappeService:
 			["user"],
 		)
 		return [share["user"] for share in shares if share.get("user")]
+
+	async def get_employees(self, identifiers: list[str]) -> list[dict]:
+		"""Fetch Employees whose ID or email matches any of `identifiers`.
+
+		Args:
+			identifiers (list[str]): Employee IDs and/or emails. Emails are
+				matched against both the linked user and the company email.
+
+		Returns:
+			list[dict]: Records with `name`, `employee_name`, `user_id` and
+				`company_email`. Unmatched identifiers are simply absent.
+
+		"""
+		if not identifiers:
+			return []
+		return await self._fetch_list(
+			EMPLOYEE_DOCTYPE,
+			[],
+			EMPLOYEE_FIELDS,
+			or_filters=[
+				["name", "in", identifiers],
+				["user_id", "in", identifiers],
+				["company_email", "in", identifiers],
+			],
+		)
+
+	async def get_shared_project_ids(
+		self, emails: list[str], project_ids: list[str]
+	) -> dict[str, set[str]]:
+		"""Map each email to the given projects it is shared on.
+
+		One DocShare query for the whole set, rather than one per project.
+
+		Args:
+			emails (list[str]): User emails to look up.
+			project_ids (list[str]): Projects to check membership against.
+
+		Returns:
+			dict[str, set[str]]: Email -> project IDs from `project_ids` the
+				user is shared on. Emails with no shares are absent.
+
+		"""
+		if not emails or not project_ids:
+			return {}
+		shares = await self._fetch_list(
+			DOCSHARE_DOCTYPE,
+			[
+				["share_doctype", "=", PROJECT_DOCTYPE],
+				["share_name", "in", project_ids],
+				["user", "in", emails],
+			],
+			["user", "share_name"],
+		)
+		result: dict[str, set[str]] = {}
+		for share in shares:
+			result.setdefault(share["user"], set()).add(share["share_name"])
+		return result
 
 	async def get_github_repositories(self, names: list[str]) -> list[dict]:
 		"""Fetch display info for a set of GitHub Repository records.
