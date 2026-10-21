@@ -201,11 +201,20 @@ async def test_failed_batch_keeps_others(mock_http):
 
 @pytest.mark.asyncio
 async def test_html_description_becomes_text(mock_http):
-	server(mock_http, [row(1, D(2026, 9, 1), description="<p>fixed <b>bug</b></p>")])
+	server(
+		mock_http,
+		[
+			row(
+				1,
+				D(2026, 9, 1),
+				description="<p>fixed <b>bug</b> &amp; more</p><p>second</p>",
+			)
+		],
+	)
 	result = await fetch_timesheets(
 		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), FrappeService()
 	)
-	assert result.entries[0].description == "fixed **bug**"
+	assert result.entries[0].description == "fixed bug & more\nsecond"
 
 
 def entry(n, day, hours, *, employee="E1", project="P1", draft=False):

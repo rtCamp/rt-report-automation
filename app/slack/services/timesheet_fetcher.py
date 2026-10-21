@@ -8,8 +8,7 @@ rather than failing the whole request.
 import asyncio
 import datetime as dt
 import logging
-
-import html2text
+from html.parser import HTMLParser
 
 from app.frappe.constants import TIMESHEET_DRAFT_DOCSTATUS
 from app.frappe.service import FrappeService
@@ -43,14 +42,33 @@ def split_into_batches(
 	return batches
 
 
+class _TextExtractor(HTMLParser):
+	"""Collect an HTML fragment's text, putting block boundaries on new lines."""
+
+	_BLOCK_TAGS = frozenset(
+		{"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}
+	)
+
+	def __init__(self) -> None:
+		super().__init__(convert_charrefs=True)
+		self.parts: list[str] = []
+
+	def handle_starttag(self, tag: str, attrs: list) -> None:
+		if tag in self._BLOCK_TAGS:
+			self.parts.append("\n")
+
+	def handle_data(self, data: str) -> None:
+		self.parts.append(data)
+
+
 def _to_text(html: str | None) -> str:
+	"""Plain text of a Frappe HTML description, with no markdown or tags."""
 	if not html:
 		return ""
-	converter = html2text.HTML2Text()
-	converter.ignore_links = True
-	converter.ignore_images = True
-	converter.body_width = 0  # No line wrapping
-	return converter.handle(html).strip()
+	parser = _TextExtractor()
+	parser.feed(html)
+	lines = (line.strip() for line in "".join(parser.parts).splitlines())
+	return "\n".join(line for line in lines if line)
 
 
 def _to_entry(row: dict) -> TimesheetEntry:
