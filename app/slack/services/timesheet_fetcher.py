@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 BATCH_DAYS = 30
 UNASSIGNED_PROJECT = "(no project)"
+UNASSIGNED_EMPLOYEE = "(no employee)"
 
 
 def split_into_batches(
@@ -59,7 +60,7 @@ def _to_entry(row: dict) -> TimesheetEntry:
 	return TimesheetEntry(
 		detail_id=row["detail_id"],
 		timesheet=row["timesheet"],
-		employee=row["employee"],
+		employee=row.get("employee"),
 		project=row.get("project"),
 		task=row.get("task"),
 		date=from_time.date(),
@@ -85,7 +86,8 @@ def compute_totals(entries: list[TimesheetEntry]) -> TimesheetTotals:
 	for entry in entries:
 		project = entry.project or UNASSIGNED_PROJECT
 		_add(totals.overall, entry)
-		_add(totals.per_member.setdefault(entry.employee, HoursTotal()), entry)
+		member = entry.employee or UNASSIGNED_EMPLOYEE
+		_add(totals.per_member.setdefault(member, HoursTotal()), entry)
 		_add(totals.per_project.setdefault(project, HoursTotal()), entry)
 		_add(totals.per_day.setdefault(entry.date, HoursTotal()), entry)
 	return totals
@@ -115,8 +117,12 @@ async def _fetch_batch(
 	window: tuple[dt.date, dt.date],
 	employees: list[str] | None,
 	project_ids: list[str] | None,
-) -> list[dict]:
-	"""Fetch one window, raising if it is short of the server's count."""
+) -> list[TimesheetEntry]:
+	"""Fetch and convert one window, raising if it is incomplete or malformed.
+
+	Converting here, rather than after merging, means one bad row costs only
+	its own window.
+	"""
 	start, end = window
 	rows, expected = await asyncio.gather(
 		frappe.get_timesheet_entries(
@@ -126,10 +132,12 @@ async def _fetch_batch(
 			start, end, employees=employees, project_ids=project_ids
 		),
 	)
-	if len(rows) < expected:
-		msg = f"retrieved {len(rows)} of {expected} entries"
+	entries = {row["detail_id"]: _to_entry(row) for row in rows}
+	# Distinct ids, not raw rows: rows can repeat when offset pages overlap.
+	if len(entries) < expected:
+		msg = f"retrieved {len(entries)} of {expected} entries"
 		raise RuntimeError(msg)
-	return rows
+	return list(entries.values())
 
 
 async def fetch_timesheets(
@@ -160,9 +168,9 @@ async def fetch_timesheets(
 				FetchLimitation(from_date=start, to_date=end, reason=str(outcome))
 			)
 			continue
-		for row in outcome:
+		for entry in outcome:
 			# Dedupe on the detail row id as a safety net against overlap.
-			entries.setdefault(row["detail_id"], _to_entry(row))
+			entries.setdefault(entry.detail_id, entry)
 
 	ordered = sorted(entries.values(), key=lambda e: (e.date, e.detail_id))
 	return TimesheetFetchResult(

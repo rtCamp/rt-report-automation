@@ -77,7 +77,8 @@ class TimesheetEntry(BaseModel):
 
 	detail_id: str
 	timesheet: str
-	employee: str
+	# None when the parent Timesheet has no employee.
+	employee: str | None
 	project: str | None
 	task: str | None
 	date: dt.date

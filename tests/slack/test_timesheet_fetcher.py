@@ -247,3 +247,42 @@ async def test_empty_result_has_zero_totals(mock_http):
 	assert result.entries == []
 	assert result.limitations == []
 	assert result.totals.overall.hours == 0
+
+
+@pytest.mark.asyncio
+async def test_duplicate_rows_do_not_hide_a_short_window(mock_http):
+	# Overlapping pages repeat a row: 2 raw rows, but only 1 distinct id,
+	# against a server count of 2.
+	rows = [row(1, D(2026, 9, 1)), row(1, D(2026, 9, 1))]
+	server(mock_http, rows, count_offset=0)
+	result = await fetch_timesheets(
+		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), FrappeService()
+	)
+	assert result.entries == []
+	assert len(result.limitations) == 1
+
+
+@pytest.mark.asyncio
+async def test_project_target_with_unassigned_employee(mock_http):
+	unassigned = {**row(1, D(2026, 9, 1), hours=2), "employee": None}
+	server(mock_http, [unassigned, row(2, D(2026, 9, 1))])
+	targets = ResolvedTargets(
+		scope=AccessScope(all_projects=True), project_ids=["PROJ-1"]
+	)
+	result = await fetch_timesheets(
+		make_query(D(2026, 9, 1), D(2026, 9, 1), "projects"), targets, FrappeService()
+	)
+	assert len(result.entries) == 2
+	assert result.limitations == []
+	assert result.totals.per_member["(no employee)"].hours == 2
+
+
+@pytest.mark.asyncio
+async def test_malformed_row_limits_only_its_window(mock_http):
+	bad = {**row(1, D(2026, 7, 1)), "hours": "not-a-number"}
+	server(mock_http, [bad, row(2, D(2026, 8, 15))])
+	result = await fetch_timesheets(
+		make_query(D(2026, 7, 1), D(2026, 9, 28)), members(), FrappeService()
+	)
+	assert [e.detail_id for e in result.entries] == ["d2"]
+	assert [lim.from_date for lim in result.limitations] == [D(2026, 7, 1)]
