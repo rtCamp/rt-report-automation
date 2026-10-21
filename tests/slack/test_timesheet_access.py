@@ -224,3 +224,17 @@ async def test_delivery_manager_reviews_any_member_with_scope_all():
 	assert result.scope.all_projects
 	assert len(result.employees) == 2
 	frappe.get_shared_project_ids.assert_not_awaited()
+
+
+async def test_unknown_mention_does_not_abort_valid_targets():
+	# A mention Slack can't find maps to no email (see the notifier), and the
+	# valid employee alongside it still resolves.
+	notifier = make_notifier({"U0MISSING": None})
+	frappe = make_frappe(roles=["Delivery Manager"])
+
+	result = await resolve(
+		make_query("members", ["EMP-001", "<@U0MISSING>"]), frappe, notifier
+	)
+
+	assert [e.employee_id for e in result.employees] == ["EMP-001"]
+	assert result.not_found == ["<@U0MISSING>"]

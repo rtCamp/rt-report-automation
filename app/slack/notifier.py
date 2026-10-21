@@ -4,6 +4,7 @@ import logging
 from typing import cast
 
 from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 from app.core.adapters.redis import redis_client
 from app.core.config import settings
@@ -104,6 +105,20 @@ class SlackNotifierService:
 					)
 
 			return email
+
+		except SlackApiError as exc:
+			# `users_info` raises rather than returning `ok: false`. An unknown
+			# user is an ordinary "no email", not a failure -- callers such as
+			# the timesheet resolver report it and carry on with other targets.
+			if exc.response.get("error") == "user_not_found":
+				self.logger.warning("Slack user %s not found", user_id)
+				return None
+			log_and_raise(
+				self.logger,
+				"Exception occurred while looking up user info",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
 
 		except Exception as exc:
 			log_and_raise(
