@@ -1,5 +1,6 @@
 """Service for interacting with the Frappe PMS REST API."""
 
+import datetime as dt
 import json
 import logging
 from typing import cast
@@ -11,6 +12,8 @@ from app.core.config import settings
 from app.core.utils import log_and_raise
 from app.frappe.constants import (
 	DOCSHARE_DOCTYPE,
+	EMPLOYEE_DOCTYPE,
+	EMPLOYEE_FIELDS,
 	GITHUB_REPOSITORY_DOCTYPE,
 	HAS_ROLE_DOCTYPE,
 	NON_BILLABLE_TYPE,
@@ -21,6 +24,12 @@ from app.frappe.constants import (
 	PROJECT_SUPPRESSED_STATUSES,
 	PROJECT_TIMELINE_ITEM_DOCTYPE,
 	RISK_DOCTYPE,
+	TIMESHEET_DETAIL_DOCTYPE,
+	TIMESHEET_DOCTYPE,
+	TIMESHEET_ENTRY_FIELDS,
+	TIMESHEET_ENTRY_ORDER_BY,
+	TIMESHEET_PAGE_SIZE,
+	TIMESHEET_REVIEWED_DOCSTATUSES,
 	TODO_DOCTYPE,
 	USER_DOCTYPE,
 	USER_ROLES_CACHE_KEY,
@@ -176,6 +185,7 @@ class FrappeService:
 		doctype: str,
 		filters: list,
 		fields: list[str],
+		or_filters: list | None = None,
 	) -> list[dict]:
 		"""Fetch a filtered, field-limited list of records for a doctype.
 
@@ -184,6 +194,8 @@ class FrappeService:
 			filters (list): Frappe list-view style filters, e.g.
 				``[["project", "=", "PROJ-0001"]]``.
 			fields (list[str]): Fieldnames to return for each record.
+			or_filters (list | None): Alternatives ANDed with `filters`; a
+				record matches if it satisfies any one of them.
 
 		Returns:
 			list[dict]: Matching records. Empty only if none match -- a
@@ -196,6 +208,8 @@ class FrappeService:
 			"fields": json.dumps(fields),
 			"limit_page_length": 0,
 		}
+		if or_filters:
+			params["or_filters"] = json.dumps(or_filters)
 
 		try:
 			async with httpx.AsyncClient() as client:
@@ -429,6 +443,63 @@ class FrappeService:
 		)
 		return [share["user"] for share in shares if share.get("user")]
 
+	async def get_employees(self, identifiers: list[str]) -> list[dict]:
+		"""Fetch Employees whose ID or email matches any of `identifiers`.
+
+		Args:
+			identifiers (list[str]): Employee IDs and/or emails. Emails are
+				matched against both the linked user and the company email.
+
+		Returns:
+			list[dict]: Records with `name`, `employee_name`, `user_id` and
+				`company_email`. Unmatched identifiers are simply absent.
+
+		"""
+		if not identifiers:
+			return []
+		return await self._fetch_list(
+			EMPLOYEE_DOCTYPE,
+			[],
+			EMPLOYEE_FIELDS,
+			or_filters=[
+				["name", "in", identifiers],
+				["user_id", "in", identifiers],
+				["company_email", "in", identifiers],
+			],
+		)
+
+	async def get_shared_project_ids(
+		self, emails: list[str], project_ids: list[str]
+	) -> dict[str, set[str]]:
+		"""Map each email to the given projects it is shared on.
+
+		One DocShare query for the whole set, rather than one per project.
+
+		Args:
+			emails (list[str]): User emails to look up.
+			project_ids (list[str]): Projects to check membership against.
+
+		Returns:
+			dict[str, set[str]]: Email -> project IDs from `project_ids` the
+				user is shared on. Emails with no shares are absent.
+
+		"""
+		if not emails or not project_ids:
+			return {}
+		shares = await self._fetch_list(
+			DOCSHARE_DOCTYPE,
+			[
+				["share_doctype", "=", PROJECT_DOCTYPE],
+				["share_name", "in", project_ids],
+				["user", "in", emails],
+			],
+			["user", "share_name"],
+		)
+		result: dict[str, set[str]] = {}
+		for share in shares:
+			result.setdefault(share["user"], set()).add(share["share_name"])
+		return result
+
 	async def get_github_repositories(self, names: list[str]) -> list[dict]:
 		"""Fetch display info for a set of GitHub Repository records.
 
@@ -448,3 +519,129 @@ class FrappeService:
 			[["name", "in", names]],
 			["name", "repository_owner", "repository_name"],
 		)
+
+	@staticmethod
+	def _timesheet_filters(
+		from_date: dt.date,
+		to_date: dt.date,
+		employees: list[str] | None,
+		project_ids: list[str] | None,
+	) -> list[list]:
+		"""Build the filters shared by the entry fetch and its count."""
+		filters: list[list] = [
+			[TIMESHEET_DOCTYPE, "docstatus", "in", TIMESHEET_REVIEWED_DOCSTATUSES],
+			# A date-only upper bound is expanded by Frappe to the end of that
+			# day, so `to_date` is inclusive.
+			[
+				TIMESHEET_DETAIL_DOCTYPE,
+				"from_time",
+				"between",
+				[from_date.isoformat(), to_date.isoformat()],
+			],
+		]
+		if employees is not None:
+			filters.append([TIMESHEET_DOCTYPE, "employee", "in", employees])
+		if project_ids is not None:
+			filters.append([TIMESHEET_DETAIL_DOCTYPE, "project", "in", project_ids])
+		return filters
+
+	async def get_timesheet_entries(
+		self,
+		from_date: dt.date,
+		to_date: dt.date,
+		*,
+		employees: list[str] | None = None,
+		project_ids: list[str] | None = None,
+	) -> list[dict]:
+		"""Fetch draft and submitted time logs in one date window.
+
+		Pages through the results with a stable order so no row is repeated
+		or skipped between pages.
+
+		Args:
+			from_date (dt.date): First day, inclusive.
+			to_date (dt.date): Last day, inclusive.
+			employees (list[str] | None): Restrict to these Employee IDs;
+				None means no employee filter.
+			project_ids (list[str] | None): Restrict to these projects; None
+				means no project filter.
+
+		Returns:
+			list[dict]: Flat rows with `detail_id`, `timesheet`, `employee`,
+				`docstatus`, `project`, `task`, `from_time`, `hours` and
+				`description` (HTML).
+
+		Raises:
+			Exception: If any page fails; a partial window is never returned.
+
+		"""
+		if employees == [] or project_ids == []:
+			return []
+		filters = self._timesheet_filters(from_date, to_date, employees, project_ids)
+		rows: list[dict] = []
+		start = 0
+		try:
+			async with httpx.AsyncClient() as client:
+				while True:
+					response = await client.get(
+						f"{self.base_url}/api/resource/{TIMESHEET_DOCTYPE}",
+						headers=self.headers,
+						params={
+							"filters": json.dumps(filters),
+							"fields": json.dumps(TIMESHEET_ENTRY_FIELDS),
+							"order_by": TIMESHEET_ENTRY_ORDER_BY,
+							"limit_start": start,
+							"limit_page_length": TIMESHEET_PAGE_SIZE,
+						},
+					)
+					response.raise_for_status()
+					page = response.json().get("data", [])
+					rows.extend(page)
+					if len(page) < TIMESHEET_PAGE_SIZE:
+						return rows
+					start += TIMESHEET_PAGE_SIZE
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching timesheet entries from Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
+	async def get_timesheet_entry_count(
+		self,
+		from_date: dt.date,
+		to_date: dt.date,
+		*,
+		employees: list[str] | None = None,
+		project_ids: list[str] | None = None,
+	) -> int:
+		"""Count the time logs `get_timesheet_entries` should return.
+
+		Asked of the server separately so a short fetch can be detected.
+		"""
+		if employees == [] or project_ids == []:
+			return 0
+		filters = self._timesheet_filters(from_date, to_date, employees, project_ids)
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.get(
+					f"{self.base_url}/api/method/frappe.client.get_count",
+					headers=self.headers,
+					params={
+						"doctype": TIMESHEET_DOCTYPE,
+						"filters": json.dumps(filters),
+					},
+				)
+
+			response.raise_for_status()
+			return int(response.json().get("message", 0))
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while counting timesheet entries in Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)

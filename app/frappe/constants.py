@@ -10,6 +10,11 @@ PROJECT_ENGINEERING_MANAGER_FIELD = "custom_engineering_manager"
 
 USER_DOCTYPE = "User"
 
+# Employee `name` is the Employee ID (e.g. "EMP-001"); `user_id` links to the
+# Frappe User, whose `name` is the email.
+EMPLOYEE_DOCTYPE = "Employee"
+EMPLOYEE_FIELDS = ["name", "employee_name", "user_id", "company_email"]
+
 # Read directly: production strips child tables the API user can't read, so
 # the parent User document's inline `roles` key comes back silently empty.
 HAS_ROLE_DOCTYPE = "Has Role"
@@ -126,3 +131,29 @@ RISK_MITIGATED_STATUS = "Mitigated"
 RISK_BLOCKED_STATUS = "Blocked"
 # Lower sorts first: escalate High-risk items to the top of the open-risk list.
 RISK_LEVEL_ORDER = {"High": 0, "Medium": 1, "Low": 2}
+
+# Timesheet time logs live in the `Timesheet Detail` child table; each row's
+# parent `Timesheet` carries the employee and docstatus.
+TIMESHEET_DOCTYPE = "Timesheet"
+TIMESHEET_DETAIL_DOCTYPE = "Timesheet Detail"
+# 0 = Draft, 1 = Submitted. Cancelled (2) is never reviewed.
+TIMESHEET_DRAFT_DOCSTATUS = 0
+TIMESHEET_REVIEWED_DOCSTATUSES = [0, 1]
+# Aliased so rows come back flat: `tabTimesheet Detail`.hours as hours, etc.
+TIMESHEET_ENTRY_FIELDS = [
+	"`tabTimesheet Detail`.name as detail_id",
+	"`tabTimesheet`.name as timesheet",
+	"`tabTimesheet`.employee as employee",
+	"`tabTimesheet`.docstatus as docstatus",
+	"`tabTimesheet Detail`.project as project",
+	"`tabTimesheet Detail`.task as task",
+	"`tabTimesheet Detail`.from_time as from_time",
+	"`tabTimesheet Detail`.hours as hours",
+	"`tabTimesheet Detail`.description as description",
+]
+# Sorted on the child row's own name last so pages never overlap or skip rows
+# that share a `from_time`.
+TIMESHEET_ENTRY_ORDER_BY = (
+	"`tabTimesheet Detail`.from_time asc, `tabTimesheet Detail`.name asc"
+)
+TIMESHEET_PAGE_SIZE = 500

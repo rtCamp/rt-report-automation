@@ -17,12 +17,45 @@ SLACK_MAX_SELECT_OPTIONS = 100
 OPTIONS_TIME_BUDGET_SECONDS = 2.5
 
 # /pms subcommands, and the usage text shown for anything else.
-PMS_SUBCOMMANDS = frozenset({"projects", "missing-fields", "audit"})
+PMS_SUBCOMMANDS = frozenset({"projects", "missing-fields", "audit", "timesheets"})
 PMS_USAGE_TEXT = (
-	"Usage: `/pms projects`, `/pms missing-fields`, or `/pms audit`. "
-	"`missing-fields` can optionally take a project name or ID to filter to a "
-	"single project, e.g. `/pms missing-fields PROJ-0669`. `audit` opens a "
-	"project picker, or takes an ID directly, e.g. `/pms audit PROJ-0669`."
+	"Usage: `/pms projects`, `/pms missing-fields`, `/pms audit`, or "
+	"`/pms timesheets`. `missing-fields` can optionally take a project name or "
+	"ID to filter to a single project, e.g. `/pms missing-fields PROJ-0669`. "
+	"`audit` opens a project picker, or takes an ID directly, e.g. "
+	"`/pms audit PROJ-0669`. `timesheets` reviews time logs for members or "
+	"projects over a date range; run it alone for details."
+)
+
+# /pms timesheets: selectable checks, and the longest range (in days,
+# inclusive) one request may cover.
+# A tuple, not a set: its order is the default `--checks` order and the order
+# shown in the usage text.
+TIMESHEET_CHECKS = (
+	"duplicates",
+	"incomplete",
+	"estimates",
+	"gaps",
+	"contributions",
+	"repeats",
+	"setup",
+	"docs",
+)
+TIMESHEET_MAX_RANGE_DAYS = 90
+TIMESHEET_USAGE_TEXT = (
+	"Usage: `/pms timesheets <analyze|fetch> (--members IDS | --projects IDS) "
+	"--from YYYY-MM-DD --to YYYY-MM-DD [--checks CHECKS]`\n"
+	"• `--members` / `--projects`: comma-separated IDs; use exactly one.\n"
+	f"• `--from` / `--to`: inclusive, at most {TIMESHEET_MAX_RANGE_DAYS} days.\n"
+	"• `--checks` (`analyze` only, defaults to all): "
+	f"{', '.join(f'`{c}`' for c in TIMESHEET_CHECKS)}.\n"
+	"Examples:\n"
+	"`/pms timesheets analyze --members EMP-001,EMP-002 "
+	"--from 2026-09-21 --to 2026-09-25`\n"
+	"`/pms timesheets fetch --projects PROJ-0669 "
+	"--from 2026-09-01 --to 2026-09-30`\n"
+	"`/pms timesheets analyze --projects PROJ-0669 "
+	"--from 2026-09-01 --to 2026-09-30 --checks duplicates,gaps`"
 )
 
 # A user ID maps to the same email indefinitely; cached to keep the lookup
@@ -104,3 +137,11 @@ QUESTION_PATTERNS = {
 	)
 	for key in set(NEW_FORMAT_PATTERNS) | set(OLD_FORMAT_PATTERNS)
 }
+
+# Shown when the requester's Slack profile has no email -- shared by every
+# command that must match the requester to a Next PMS user.
+SLACK_EMAIL_UNREADABLE_TEXT = (
+	"⚠️ Couldn't read your email from your Slack profile, so there's no "
+	"way to match you to Next PMS.\n"
+	"Add a work email to your Slack profile, then try again."
+)

@@ -13,7 +13,7 @@ from app.frappe.constants import PROJECT_MANAGER_FIELD
 from app.frappe.service import FrappeService
 from app.llm.models.summarization import ProjectMetadata, SlackMetadata
 from app.slack.auth import safe_slack_response_url
-from app.slack.constants import SLACK_API_RATE_LIMIT
+from app.slack.constants import SLACK_API_RATE_LIMIT, SLACK_EMAIL_UNREADABLE_TEXT
 from app.slack.notifier import SlackNotifierService
 from app.slack.service import SlackService
 from app.slack.utils.helpers import (
@@ -139,11 +139,7 @@ async def handle_pms_command(ctx: inngest.Context):
 	blocks: list[dict] | None = None
 
 	if not email:
-		text = (
-			"⚠️ Couldn't read your email from your Slack profile, so there's no "
-			"way to match you to Next PMS.\n"
-			"Add a work email to your Slack profile, then try again."
-		)
+		text = SLACK_EMAIL_UNREADABLE_TEXT
 	else:
 		try:
 			frappe_service = FrappeService()
