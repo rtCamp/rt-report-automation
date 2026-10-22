@@ -25,6 +25,7 @@ from app.slack.models.timesheets import (
 logger = logging.getLogger(__name__)
 
 BATCH_DAYS = 30
+HOURS_PRECISION = 4
 UNASSIGNED_PROJECT = "(no project)"
 UNASSIGNED_EMPLOYEE = "(no employee)"
 
@@ -49,21 +50,30 @@ class _TextExtractor(HTMLParser):
 		{"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}
 	)
 
+	# Their contents are code, not description text.
+	_SKIPPED_TAGS = frozenset({"script", "style"})
+
 	def __init__(self) -> None:
 		super().__init__(convert_charrefs=True)
 		self.parts: list[str] = []
+		self._skip_depth = 0
 
 	def handle_starttag(self, tag: str, attrs: list) -> None:
+		if tag in self._SKIPPED_TAGS:
+			self._skip_depth += 1
 		if tag in self._BLOCK_TAGS:
 			self.parts.append("\n")
 
 	def handle_endtag(self, tag: str) -> None:
+		if tag in self._SKIPPED_TAGS and self._skip_depth:
+			self._skip_depth -= 1
 		# Text right after a closing block ("</p>Verified") must not run on.
 		if tag in self._BLOCK_TAGS:
 			self.parts.append("\n")
 
 	def handle_data(self, data: str) -> None:
-		self.parts.append(data)
+		if not self._skip_depth:
+			self.parts.append(data)
 
 
 def _to_text(html: str | None) -> str:
@@ -72,6 +82,7 @@ def _to_text(html: str | None) -> str:
 		return ""
 	parser = _TextExtractor()
 	parser.feed(html)
+	parser.close()
 	lines = (line.strip() for line in "".join(parser.parts).splitlines())
 	return "\n".join(line for line in lines if line)
 
@@ -94,10 +105,11 @@ def _to_entry(row: dict) -> TimesheetEntry:
 
 
 def _add(total: HoursTotal, entry: TimesheetEntry) -> None:
+	# Rounded so repeated float addition (0.1 x 10) doesn't leave noise.
 	if entry.is_draft:
-		total.draft_hours += entry.hours
+		total.draft_hours = round(total.draft_hours + entry.hours, HOURS_PRECISION)
 	else:
-		total.hours += entry.hours
+		total.hours = round(total.hours + entry.hours, HOURS_PRECISION)
 
 
 def compute_totals(entries: list[TimesheetEntry]) -> TimesheetTotals:

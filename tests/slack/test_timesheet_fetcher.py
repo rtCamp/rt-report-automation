@@ -331,3 +331,35 @@ async def test_failed_count_cancels_pagination():
 	)
 	assert cancelled.is_set()
 	assert len(result.limitations) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+	("html", "expected"),
+	[
+		("<p>first</p>tail", "first\ntail"),
+		("plain text", "plain text"),
+		("<p>a</p>b &amp", "a\nb &"),
+	],
+)
+async def test_trailing_description_text_is_kept(mock_http, html, expected):
+	server(mock_http, [row(1, D(2026, 9, 1), description=html)])
+	result = await fetch_timesheets(
+		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), FrappeService()
+	)
+	assert result.entries[0].description == expected
+
+
+@pytest.mark.asyncio
+async def test_script_and_style_contents_are_dropped(mock_http):
+	html = "<style>p{}</style><p>keep</p><script>x()</script>"
+	server(mock_http, [row(1, D(2026, 9, 1), description=html)])
+	result = await fetch_timesheets(
+		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), FrappeService()
+	)
+	assert result.entries[0].description == "keep"
+
+
+def test_totals_have_no_float_noise():
+	totals = compute_totals([entry(i, D(2026, 9, 1), 0.1) for i in range(10)])
+	assert totals.overall.hours == 1.0
