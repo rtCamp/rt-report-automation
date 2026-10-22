@@ -68,3 +68,56 @@ class ResolvedTargets(BaseModel):
 	# Reported back to the requester; the rest of the request continues.
 	not_found: list[str] = []
 	denied: list[str] = []
+
+
+class TimesheetEntry(BaseModel):
+	"""One time log (a `Timesheet Detail` row) with its parent's context."""
+
+	model_config = ConfigDict(frozen=True)
+
+	detail_id: str
+	timesheet: str
+	# None when the parent Timesheet has no employee.
+	employee: str | None
+	project: str | None
+	task: str | None
+	date: dt.date
+	hours: float
+	# Plain text; Frappe stores HTML.
+	description: str
+	# The parent Timesheet isn't submitted yet.
+	is_draft: bool
+
+
+class FetchLimitation(BaseModel):
+	"""A date window whose entries could not be fully retrieved."""
+
+	model_config = ConfigDict(frozen=True)
+
+	from_date: dt.date
+	to_date: dt.date
+	reason: str
+
+
+class HoursTotal(BaseModel):
+	"""Hours for one grouping, with draft hours kept apart from submitted."""
+
+	hours: float = 0.0
+	draft_hours: float = 0.0
+
+
+class TimesheetTotals(BaseModel):
+	"""Hours rolled up overall and per member, project and day."""
+
+	overall: HoursTotal = HoursTotal()
+	per_member: dict[str, HoursTotal] = {}
+	per_project: dict[str, HoursTotal] = {}
+	per_day: dict[dt.date, HoursTotal] = {}
+
+
+class TimesheetFetchResult(BaseModel):
+	"""Entries for a query, their totals, and any window that is incomplete."""
+
+	entries: list[TimesheetEntry] = []
+	totals: TimesheetTotals = TimesheetTotals()
+	limitations: list[FetchLimitation] = []
