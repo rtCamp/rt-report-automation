@@ -57,6 +57,11 @@ class _TextExtractor(HTMLParser):
 		if tag in self._BLOCK_TAGS:
 			self.parts.append("\n")
 
+	def handle_endtag(self, tag: str) -> None:
+		# Text right after a closing block ("</p>Verified") must not run on.
+		if tag in self._BLOCK_TAGS:
+			self.parts.append("\n")
+
 	def handle_data(self, data: str) -> None:
 		self.parts.append(data)
 

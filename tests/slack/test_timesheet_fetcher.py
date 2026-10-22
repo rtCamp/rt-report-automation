@@ -295,3 +295,16 @@ async def test_malformed_row_limits_only_its_window(mock_http):
 	)
 	assert [e.detail_id for e in result.entries] == ["d2"]
 	assert [lim.from_date for lim in result.limitations] == [D(2026, 7, 1)]
+
+
+@pytest.mark.asyncio
+async def test_text_after_closing_block_is_separated(mock_http):
+	html = (
+		"<div><p>Fixed bug</p>Verified tests</div>"
+		"<ul><li>a<ul><li>b</li></ul>c</li></ul>"
+	)
+	server(mock_http, [row(1, D(2026, 9, 1), description=html)])
+	result = await fetch_timesheets(
+		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), FrappeService()
+	)
+	assert result.entries[0].description == "Fixed bug\nVerified tests\na\nb\nc"
