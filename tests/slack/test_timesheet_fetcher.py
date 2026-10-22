@@ -363,3 +363,13 @@ async def test_script_and_style_contents_are_dropped(mock_http):
 def test_totals_have_no_float_noise():
 	totals = compute_totals([entry(i, D(2026, 9, 1), 0.1) for i in range(10)])
 	assert totals.overall.hours == 1.0
+
+
+def test_totals_round_once_not_per_entry():
+	# Rounding each addition to 4 places would drift this to 1.002.
+	entries = [entry(i, D(2026, 9, 1), 0.016667, draft=i % 2 == 0) for i in range(60)]
+	totals = compute_totals(entries)
+	assert totals.overall.hours + totals.overall.draft_hours == pytest.approx(
+		1.0, abs=1e-3
+	)
+	assert totals.overall.hours == round(30 * 0.016667, 4)

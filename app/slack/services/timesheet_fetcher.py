@@ -105,11 +105,16 @@ def _to_entry(row: dict) -> TimesheetEntry:
 
 
 def _add(total: HoursTotal, entry: TimesheetEntry) -> None:
-	# Rounded so repeated float addition (0.1 x 10) doesn't leave noise.
 	if entry.is_draft:
-		total.draft_hours = round(total.draft_hours + entry.hours, HOURS_PRECISION)
+		total.draft_hours += entry.hours
 	else:
-		total.hours = round(total.hours + entry.hours, HOURS_PRECISION)
+		total.hours += entry.hours
+
+
+def _round(total: HoursTotal) -> None:
+	"""Round a finished total once, clearing float noise (0.1 x 10)."""
+	total.hours = round(total.hours, HOURS_PRECISION)
+	total.draft_hours = round(total.draft_hours, HOURS_PRECISION)
 
 
 def compute_totals(entries: list[TimesheetEntry]) -> TimesheetTotals:
@@ -125,6 +130,15 @@ def compute_totals(entries: list[TimesheetEntry]) -> TimesheetTotals:
 		_add(totals.per_member.setdefault(member, HoursTotal()), entry)
 		_add(totals.per_project.setdefault(project, HoursTotal()), entry)
 		_add(totals.per_day.setdefault(entry.date, HoursTotal()), entry)
+
+	# Rounding per entry would accumulate error, so each total is rounded once.
+	for total in (
+		totals.overall,
+		*totals.per_member.values(),
+		*totals.per_project.values(),
+		*totals.per_day.values(),
+	):
+		_round(total)
 	return totals
 
 
