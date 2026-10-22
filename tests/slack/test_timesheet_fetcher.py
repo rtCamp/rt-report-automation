@@ -1,9 +1,11 @@
 """Tests for batched timesheet fetching and totals."""
 
+import asyncio
 import datetime as dt
 import itertools
 import json
 from typing import Literal
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -308,3 +310,24 @@ async def test_text_after_closing_block_is_separated(mock_http):
 		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), FrappeService()
 	)
 	assert result.entries[0].description == "Fixed bug\nVerified tests\na\nb\nc"
+
+
+@pytest.mark.asyncio
+async def test_failed_count_cancels_pagination():
+	cancelled = asyncio.Event()
+
+	async def slow_entries(*args, **kwargs):
+		try:
+			await asyncio.sleep(10)
+		except asyncio.CancelledError:
+			cancelled.set()
+			raise
+
+	frappe = MagicMock()
+	frappe.get_timesheet_entries = slow_entries
+	frappe.get_timesheet_entry_count = AsyncMock(side_effect=RuntimeError("boom"))
+	result = await fetch_timesheets(
+		make_query(D(2026, 9, 1), D(2026, 9, 1)), members(), frappe
+	)
+	assert cancelled.is_set()
+	assert len(result.limitations) == 1

@@ -147,14 +147,25 @@ async def _fetch_batch(
 	its own window.
 	"""
 	start, end = window
-	rows, expected = await asyncio.gather(
+	fetch_task = asyncio.ensure_future(
 		frappe.get_timesheet_entries(
 			start, end, employees=employees, project_ids=project_ids
-		),
+		)
+	)
+	count_task = asyncio.ensure_future(
 		frappe.get_timesheet_entry_count(
 			start, end, employees=employees, project_ids=project_ids
-		),
+		)
 	)
+	try:
+		rows, expected = await asyncio.gather(fetch_task, count_task)
+	except BaseException:
+		# `gather` leaves the sibling running when one fails, which would keep
+		# paging Frappe for a window that is already discarded.
+		for task in (fetch_task, count_task):
+			task.cancel()
+		await asyncio.gather(fetch_task, count_task, return_exceptions=True)
+		raise
 	entries = {row["detail_id"]: _to_entry(row) for row in rows}
 	# Distinct ids, not raw rows: rows can repeat when offset pages overlap.
 	if len(entries) < expected:
