@@ -133,6 +133,18 @@ def _skip_reason(
 	return None
 
 
+def _number_by_manager(reminders: list[dict]) -> None:
+	"""Label each manager's sendable reminders "1 of 3" when they get several."""
+	by_manager: dict[str, list[dict]] = {}
+	for r in reminders:
+		if not r["skip"]:
+			by_manager.setdefault(r["email"], []).append(r)
+	for batch in by_manager.values():
+		if len(batch) > 1:
+			for i, r in enumerate(batch, 1):
+				r["ctx"]["position"] = f"{i} of {len(batch)}"
+
+
 async def _load_reminders() -> dict:
 	"""Find allocations ending within the lead window and whom to remind.
 
@@ -183,6 +195,7 @@ async def _load_reminders() -> dict:
 				"skip": skip,
 			},
 		)
+	_number_by_manager(reminders)
 	return {"sent_on": today.isoformat(), "reminders": reminders}
 
 

@@ -71,6 +71,18 @@ def _header(text: str) -> dict:
 	}
 
 
+def _reminder_header(ctx: dict) -> dict:
+	"""Build the reminder's header, numbered when the manager got several that day."""
+	position = ctx.get("position")
+	return _header(
+		f"Allocation ending soon · {position}" if position else "Allocation ending soon"
+	)
+
+
+# Ends every allocation message, so consecutive DMs read as separate cards.
+_DIVIDER = {"type": "divider"}
+
+
 def _section(text: str) -> dict:
 	"""Build a mrkdwn section block."""
 	return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
@@ -156,11 +168,12 @@ def _reminder_footer(ctx: dict) -> str:
 def format_allocation_reminder(ctx: dict) -> tuple[str, list[dict]]:
 	"""Build the allocation-ending reminder with Yes/No buttons."""
 	blocks = [
-		_header("Allocation ending soon"),
+		_reminder_header(ctx),
 		_section(_reminder_details(ctx)),
 		_section(_reminder_question(ctx)),
 		_reminder_actions(ctx),
 		_context(_reminder_footer(ctx)),
+		_DIVIDER,
 	]
 	return f"Allocation ending soon: {_reminder_question(ctx)}", blocks
 
@@ -173,7 +186,7 @@ def format_reminder_outcome(
 ) -> tuple[str, list[dict]]:
 	"""Replace the reminder's question and buttons with an outcome line."""
 	blocks = [
-		_header("Allocation ending soon"),
+		_reminder_header(ctx),
 		_section(_reminder_details(ctx)),
 		_section(outcome),
 	]
@@ -181,6 +194,7 @@ def format_reminder_outcome(
 		blocks.append(_reminder_actions(ctx))
 	elif project_button := _project_button(ctx):
 		blocks.append({"type": "actions", "elements": project_button})
+	blocks.append(_DIVIDER)
 	return outcome, blocks
 
 
@@ -214,6 +228,7 @@ def format_extension_success(
 			],
 		},
 		_context("The existing allocation has been updated."),
+		_DIVIDER,
 	]
 	return f"✅ Allocation extended. {summary}", blocks
 
