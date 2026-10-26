@@ -24,6 +24,7 @@ from app.slack.constants import (
 	ALLOCATION_DECISION_KEY,
 	ALLOCATION_EXTEND_LOCK_KEY,
 	ALLOCATION_EXTEND_LOCK_TTL,
+	ALLOCATION_EXTENDING_KEY,
 	ALLOCATION_LIVE_REMINDER_KEY,
 	ALLOCATION_REMINDED_KEY,
 	ALLOCATION_REMINDED_TTL,
@@ -215,18 +216,34 @@ def is_superseded(name: str, message_ts: str) -> bool:
 	return bool(latest) and latest["ts"] != message_ts
 
 
+# Atomic so a newer reminder recorded meanwhile is never overwritten.
+_SET_OPEN_IF_LATEST = redis_client.register_script(
+	"""
+	local raw = redis.call('GET', KEYS[1])
+	if not raw then return 0 end
+	local latest = cjson.decode(raw)
+	if latest.ts ~= ARGV[1] then return 0 end
+	latest.open = ARGV[2] == '1'
+	redis.call('SET', KEYS[1], cjson.encode(latest), 'KEEPTTL')
+	return 1
+	""",
+)
+
+
 def set_reminder_open(name: str, message_ts: str, *, is_open: bool) -> None:
 	"""Mark the allocation's latest reminder unanswered or answered.
 
 	An answered reminder keeps its outcome when the next one is sent.
 	"""
-	latest = _latest_reminder(name)
-	if latest and latest["ts"] == message_ts:
-		redis_client.set(
-			ALLOCATION_LIVE_REMINDER_KEY.format(name=name),
-			json.dumps({**latest, "open": is_open}),
-			keepttl=True,
-		)
+	_SET_OPEN_IF_LATEST(
+		keys=[ALLOCATION_LIVE_REMINDER_KEY.format(name=name)],
+		args=[message_ts, "1" if is_open else "0"],
+	)
+
+
+def is_extending(name: str) -> bool:
+	"""Whether a submitted extension for the allocation hasn't settled yet."""
+	return bool(redis_client.exists(ALLOCATION_EXTENDING_KEY.format(name=name)))
 
 
 def _supersede_latest_reminder(ctx: dict, sent: dict) -> None:
@@ -241,7 +258,7 @@ def _supersede_latest_reminder(ctx: dict, sent: dict) -> None:
 		return
 
 	latest = json.loads(str(previous))
-	if not latest.get("open", True):
+	if not latest["open"]:
 		return
 	text, blocks = format_reminder_superseded(ctx)
 	# Cosmetic: actions from a replaced reminder are refused regardless.
@@ -250,6 +267,10 @@ def _supersede_latest_reminder(ctx: dict, sent: dict) -> None:
 
 async def _send_reminder(email: str, ctx: dict) -> dict:
 	"""DM one allocation's reminder to the reporting manager, at most once a day."""
+	if is_extending(ctx["name"]):
+		# Its outcome decides whether a reminder is still needed.
+		return {"status": "extension_pending"}
+
 	key = ALLOCATION_REMINDED_KEY.format(
 		name=ctx["name"],
 		end_date=ctx["end"],
@@ -581,6 +602,8 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 			f"may not have been extended. Please try again.\n> {str(exc)[:300]}",
 		}
 
+	redis_client.delete(ALLOCATION_EXTENDING_KEY.format(name=allocation["name"]))
+
 	if outcome["status"] == "extended":
 		try:
 			await ctx.step.run(
@@ -630,6 +653,23 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 	return {"status": outcome["status"]}
 
 
+async def _decline_outcome(ctx: dict) -> str:
+	"""Confirm the decline, unless the allocation changed since the reminder.
+
+	An extension submitted from the previous reminder can land just as this
+	one is sent, so "stays unchanged" is only said if it really did.
+	"""
+	latest = await FrappeService().get_allocation(ctx["name"])
+	if not latest:
+		return "⚠️ This allocation no longer exists in ERP."
+	if str(latest["modified"]) != ctx.get("modified"):
+		return format_allocation_changed(ctx, latest, "this reminder no longer applies")
+	return (
+		"👍 Okay, the allocation stays unchanged for now. You'll be reminded "
+		"again on the next weekday."
+	)
+
+
 @inngest_client.create_function(
 	fn_id="decline_allocation",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/decline_allocation"),
@@ -658,11 +698,8 @@ async def decline_allocation(ctx: inngest.Context) -> dict:
 		raise TypeError("Expected dict for 'allocation'")
 	message_ts = str(event_data["message_ts"])
 
-	text, blocks = format_reminder_outcome(
-		allocation,
-		"👍 Okay, the allocation stays unchanged for now. You'll be reminded "
-		"again on the next weekday.",
-	)
+	outcome = await ctx.step.run("check", _decline_outcome, allocation)
+	text, blocks = format_reminder_outcome(allocation, outcome)
 	await ctx.step.run(
 		"notify",
 		_show_outcome,

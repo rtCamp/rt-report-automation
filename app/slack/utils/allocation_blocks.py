@@ -113,10 +113,7 @@ def _reminder_question(ctx: dict) -> str:
 
 
 def _project_button(ctx: dict) -> list[dict]:
-	"""Build the "View project in Next PMS" button, if the project ID is known."""
-	# Reminders sent before `project` was added to the context have no ID.
-	if not ctx.get("project"):
-		return []
+	"""Build the "View project in Next PMS" button."""
 	return [
 		{
 			"type": "button",

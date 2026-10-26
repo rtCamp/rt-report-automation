@@ -32,6 +32,10 @@ ALLOCATION_DECISION_KEY = "allocation:decision:{name}:{end_date}:{sent_on}"
 # The allocation's latest reminder: only it can be answered, and the next one
 # replaces it if it's still unanswered.
 ALLOCATION_LIVE_REMINDER_KEY = "allocation:live_reminder:{name}"
+# Set while a submitted extension is queued or running, so no newer actionable
+# reminder (or No) can contradict it. Expires in case the run never settles.
+ALLOCATION_EXTENDING_KEY = "allocation:extending:{name}"
+ALLOCATION_EXTENDING_TTL = 900
 # Which run wrote an extension against a given allocation revision, so a
 # retry of that run can tell its own write from someone else's edit.
 ALLOCATION_APPLIED_KEY = "allocation:extend_applied:{name}:{revision}"

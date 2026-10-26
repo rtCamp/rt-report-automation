@@ -20,6 +20,8 @@ from app.slack.constants import (
 	ALLOCATION_EXTEND_ACTION_ID,
 	ALLOCATION_EXTEND_CALLBACK_ID,
 	ALLOCATION_EXTEND_MAX_DAYS,
+	ALLOCATION_EXTENDING_KEY,
+	ALLOCATION_EXTENDING_TTL,
 	ALLOCATION_REMINDED_TTL,
 	AUDIT_PROJECT_SELECT_ACTION_ID,
 	OPTIONS_TIME_BUDGET_SECONDS,
@@ -27,6 +29,7 @@ from app.slack.constants import (
 	PMS_USAGE_TEXT,
 )
 from app.slack.inngest.allocations import (
+	is_extending,
 	is_superseded,
 	preview_reminders,
 	set_reminder_open,
@@ -351,6 +354,9 @@ async def _decline_extension(payload: dict, action: dict) -> None:
 	if is_superseded(str(ctx.get("name")), message_ts):
 		await _close_superseded(ctx, channel_id, message_ts)
 		return
+	if is_extending(str(ctx.get("name"))):
+		# That extension's run updates its own reminder with the outcome.
+		return
 
 	decision_key = _claim_decision(ctx, message_ts, f"decline:{user_id}")
 	if not decision_key:
@@ -477,6 +483,8 @@ async def _submit_extension(payload: dict) -> dict:
 	decision_key = _claim_decision(ctx, message_ts, f"extend:{user_id}")
 	if not decision_key:
 		return _days_error("This reminder has already been answered.")
+	extending_key = ALLOCATION_EXTENDING_KEY.format(name=ctx.get("name"))
+	redis_client.set(extending_key, user_id, ex=ALLOCATION_EXTENDING_TTL)
 
 	# Slack allows 3 seconds to answer, so the reminder is updated by the
 	# Inngest function rather than here.
@@ -495,6 +503,7 @@ async def _submit_extension(payload: dict) -> dict:
 		)
 	except Exception as e:
 		logger.error(f"Error sending extend_allocation event to Inngest: {e}")
+		redis_client.delete(extending_key)
 		_release_decision(ctx, message_ts, decision_key)
 		return _days_error("Couldn't start the extension. Please try again.")
 
