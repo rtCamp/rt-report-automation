@@ -10,6 +10,7 @@ from fastapi.logger import logger
 
 from app.core.adapters import inngest_client
 from app.core.adapters.redis import redis_client
+from app.frappe.service import FrappeService
 from app.slack.auth import safe_slack_response_url, verify_slack_signature
 from app.slack.constants import (
 	ALLOCATION_DAYS_ACTION_ID,
@@ -25,8 +26,13 @@ from app.slack.constants import (
 	PMS_SUBCOMMANDS,
 	PMS_USAGE_TEXT,
 )
+from app.slack.inngest.allocations import preview_reminders
 from app.slack.notifier import SlackNotifierService
-from app.slack.utils.allocation_blocks import build_extend_modal, parse_extension_days
+from app.slack.utils.allocation_blocks import (
+	build_changed_modal,
+	build_extend_modal,
+	parse_extension_days,
+)
 from app.slack.utils.helpers import (
 	_format_audit_pending,
 	_format_project_options,
@@ -300,7 +306,11 @@ def _reminder_message(payload: dict) -> tuple[str, str]:
 
 def _claim_decision(ctx: dict, decision: str) -> str | None:
 	"""Record this reminder's decision, returning its key, or None if already made."""
-	key = ALLOCATION_DECISION_KEY.format(name=ctx.get("name"), end_date=ctx.get("end"))
+	key = ALLOCATION_DECISION_KEY.format(
+		name=ctx.get("name"),
+		end_date=ctx.get("end"),
+		sent_on=ctx.get("sent_on"),
+	)
 	if redis_client.set(key, decision, nx=True, ex=ALLOCATION_REMINDED_TTL):
 		return key
 	return None
@@ -330,21 +340,52 @@ async def _decline_extension(payload: dict, action: dict) -> None:
 			),
 		)
 	except Exception as e:
-		# The buttons stay, so the PM can click No again.
+		# The buttons stay, so the manager can click No again.
 		logger.error(f"Error sending decline_allocation event to Inngest: {e}")
 		redis_client.delete(decision_key)
 
 
+# Holds the modal re-checks so they aren't garbage-collected mid-flight.
+_modal_checks: set[asyncio.Task] = set()
+
+
+async def _check_extend_modal(ctx: dict, view_id: str) -> None:
+	"""Swap the open modal for a notice if the allocation changed since the reminder."""
+	try:
+		latest = await FrappeService().get_allocation(ctx["name"])
+	except Exception as e:
+		# Submitting re-checks the allocation anyway.
+		logger.warning(f"Could not re-read {ctx['name']} for the modal: {e}")
+		return
+
+	if latest and str(latest["modified"]) == ctx.get("modified"):
+		return
+	await asyncio.to_thread(
+		SlackNotifierService().update_view,
+		view_id,
+		"",
+		build_changed_modal(ctx, latest),
+	)
+
+
 async def _open_extend_modal(payload: dict, action: dict) -> None:
-	"""Open the duration modal for the reminder's allocation."""
+	"""Open the duration modal, then re-check the allocation behind it."""
 	ctx = _parse_interaction_payload(action.get("value"))
 	channel_id, message_ts = _reminder_message(payload)
 	ctx |= {"channel_id": channel_id, "message_ts": message_ts}
-	await asyncio.to_thread(
+	view = await asyncio.to_thread(
 		SlackNotifierService().open_view,
 		str(payload.get("trigger_id", "")),
 		build_extend_modal(ctx),
 	)
+	if not view:
+		return
+
+	# Opened first because the trigger_id expires in 3 seconds; ERP is read
+	# after acknowledging the click.
+	task = asyncio.create_task(_check_extend_modal(ctx, str(view["id"])))
+	_modal_checks.add(task)
+	task.add_done_callback(_modal_checks.discard)
 
 
 async def _refresh_extend_preview(payload: dict, action: dict) -> None:
@@ -421,18 +462,23 @@ async def _submit_extension(payload: dict) -> dict:
 	"/remind",
 	summary="Send allocation-ending reminders now",
 	description=(
-		"Queues the same run as the daily cron: reminds PMs about allocations "
-		"ending in seven days. Pass `dry_run=true` to list them without sending."
+		"Queues the same run as the weekday cron: reminds reporting managers "
+		"about allocations ending within 14 days. Pass `dry_run=true` to get "
+		"the recipients and skip reasons back without sending anything."
 	),
 )
 async def trigger_allocation_reminders(*, dry_run: bool = False):
-	"""Queue a run of `send_allocation_reminders` and acknowledge immediately."""
+	"""Queue a run of `send_allocation_reminders`, or return a dry run's recipients."""
+	if dry_run:
+		try:
+			return await preview_reminders()
+		except Exception as e:
+			logger.error(f"Error previewing allocation reminders: {e}")
+			return Response(status_code=502)
+
 	try:
 		await inngest_client.send(
-			inngest.Event(
-				name="rt-report-automation/send_allocation_reminders",
-				data={"dry_run": dry_run},
-			),
+			inngest.Event(name="rt-report-automation/send_allocation_reminders"),
 		)
 	except Exception as e:
 		logger.error(f"Error sending send_allocation_reminders event to Inngest: {e}")

@@ -11,7 +11,6 @@ from app.slack.constants import (
 	ALLOCATION_EXTEND_ACTION_ID,
 	ALLOCATION_EXTEND_CALLBACK_ID,
 	ALLOCATION_EXTEND_MAX_DAYS,
-	ALLOCATION_REMINDER_LEAD_DAYS,
 	ALLOCATION_VIEW_PROJECT_ACTION_ID,
 )
 from app.slack.utils.helpers import _link_button, _project_overview_url
@@ -35,7 +34,7 @@ def allocation_erp_url(name: str) -> str:
 	return f"{base}/app/resource-allocation/{name}"
 
 
-def allocation_context(allocation: dict) -> dict:
+def allocation_context(allocation: dict, sent_on: dt.date) -> dict:
 	"""Build the allocation context carried through Slack from an ERP record."""
 	return {
 		"name": allocation["name"],
@@ -46,6 +45,7 @@ def allocation_context(allocation: dict) -> dict:
 		"hours": float(allocation.get("hours_allocated_per_day") or 0),
 		# ERP revision the PM saw; the extension is refused if it changed.
 		"modified": str(allocation["modified"]),
+		"sent_on": sent_on.isoformat(),
 	}
 
 
@@ -137,6 +137,22 @@ def _reminder_actions(ctx: dict) -> dict:
 	return {"type": "actions", "elements": elements}
 
 
+def _reminder_footer(ctx: dict) -> str:
+	"""Say how soon the allocation ends and when the reminders stop."""
+	days_left = (
+		dt.date.fromisoformat(ctx["end"]) - dt.date.fromisoformat(ctx["sent_on"])
+	).days
+	ends = (
+		"Ends today"
+		if days_left == 0
+		else f"Ends in {days_left} day{'s' if days_left != 1 else ''}"
+	)
+	return (
+		f"{ends}. You'll be reminded each weekday until it's extended or "
+		f"{ctx['employee_name']} is fully booked elsewhere."
+	)
+
+
 def format_allocation_reminder(ctx: dict) -> tuple[str, list[dict]]:
 	"""Build the allocation-ending reminder with Yes/No buttons."""
 	blocks = [
@@ -144,10 +160,7 @@ def format_allocation_reminder(ctx: dict) -> tuple[str, list[dict]]:
 		_section(_reminder_details(ctx)),
 		_section(_reminder_question(ctx)),
 		_reminder_actions(ctx),
-		_context(
-			f"Reminder sent {ALLOCATION_REMINDER_LEAD_DAYS} days before the "
-			"allocation ends.",
-		),
+		_context(_reminder_footer(ctx)),
 	]
 	return f"Allocation ending soon: {_reminder_question(ctx)}", blocks
 
@@ -205,13 +218,22 @@ def format_extension_success(
 	return f"✅ Allocation extended. {summary}", blocks
 
 
-def format_allocation_changed(ctx: dict, latest: dict) -> str:
+def format_reminder_superseded(ctx: dict) -> tuple[str, list[dict]]:
+	"""Close a reminder that a newer one for the same allocation replaces."""
+	return format_reminder_outcome(ctx, "↪️ Replaced by a newer reminder.")
+
+
+def format_allocation_changed(
+	ctx: dict,
+	latest: dict,
+	consequence: str = "it wasn't extended",
+) -> str:
 	"""Explain that the allocation changed since the reminder, with its latest state."""
 	end = dt.date.fromisoformat(str(latest["allocation_end_date"]))
 	hours = float(latest.get("hours_allocated_per_day") or 0)
 	return (
-		"⚠️ This allocation was changed after this reminder was sent, so it "
-		f"wasn't extended. It now ends on *{_format_date(end)}* at "
+		f"⚠️ This allocation was changed after this reminder was sent, so "
+		f"{consequence}. It now ends on *{_format_date(end)}* at "
 		f"*{hours:g} hours per day*. "
 		f"<{allocation_erp_url(ctx['name'])}|View it in ERP>."
 	)
@@ -261,14 +283,17 @@ def build_extend_modal(ctx: dict, days_raw: str | None = None) -> dict:
 				},
 				"hint": {
 					"type": "plain_text",
-					"text": "Calendar days, starting after the current end date.",
+					"text": (
+						f"Calendar days from 1 to {ALLOCATION_EXTEND_MAX_DAYS}, "
+						"starting after the current end date."
+					),
 				},
+				# No min/max: Slack's own range error reads "Please complete
+				# this required field", so the range is checked on submit.
 				"element": {
 					"type": "number_input",
 					"action_id": ALLOCATION_DAYS_ACTION_ID,
 					"is_decimal_allowed": False,
-					"min_value": "1",
-					"max_value": str(ALLOCATION_EXTEND_MAX_DAYS),
 					"dispatch_action_config": {
 						"trigger_actions_on": ["on_character_entered"],
 					},
@@ -279,4 +304,19 @@ def build_extend_modal(ctx: dict, days_raw: str | None = None) -> dict:
 				"Working days and holiday settings follow the current allocation."
 			),
 		],
+	}
+
+
+def build_changed_modal(ctx: dict, latest: dict | None) -> dict:
+	"""Replace the duration modal when the allocation changed since the reminder."""
+	message = (
+		format_allocation_changed(ctx, latest, "it can't be extended from here")
+		if latest
+		else "⚠️ This allocation no longer exists in ERP."
+	)
+	return {
+		"type": "modal",
+		"title": {"type": "plain_text", "text": "Extend allocation"},
+		"close": {"type": "plain_text", "text": "Close"},
+		"blocks": [_section(message)],
 	}

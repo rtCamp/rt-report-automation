@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime as dt
+import json
 import logging
 from zoneinfo import ZoneInfo
 
@@ -11,10 +12,10 @@ from app.core.adapters import inngest_client
 from app.core.adapters.redis import redis_client
 from app.core.utils import validate
 from app.frappe.constants import (
-	PROJECT_MANAGER_FIELD,
+	EMPLOYEE_ACTIVE_STATUS,
+	EMPLOYEE_WEEKLY_SCHEDULE,
 	PROJECT_SUPPRESSED_STATUSES,
 	RESOURCE_ALLOCATION_DOCTYPE,
-	RESOURCE_MANAGER_ROLES,
 )
 from app.frappe.service import FrappeService, FrappeValidationError
 from app.slack.constants import (
@@ -23,6 +24,7 @@ from app.slack.constants import (
 	ALLOCATION_DECISION_KEY,
 	ALLOCATION_EXTEND_LOCK_KEY,
 	ALLOCATION_EXTEND_LOCK_TTL,
+	ALLOCATION_LIVE_REMINDER_KEY,
 	ALLOCATION_REMINDED_KEY,
 	ALLOCATION_REMINDED_TTL,
 	ALLOCATION_REMINDER_CRON,
@@ -37,6 +39,7 @@ from app.slack.utils.allocation_blocks import (
 	format_allocation_reminder,
 	format_extension_success,
 	format_reminder_outcome,
+	format_reminder_superseded,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,26 +53,171 @@ class SlackUpdateError(Exception):
 	"""Slack rejected a message update; raised so Inngest retries the step."""
 
 
-def _is_continued(allocation: dict, upcoming: list[dict]) -> bool:
-	"""Whether another allocation picks up the same employee and project right after."""
-	return any(
-		other["employee"] == allocation["employee"]
-		and other["project"] == allocation["project"]
-		and other["name"] != allocation["name"]
-		for other in upcoming
+def _date(value: object) -> dt.date:
+	"""Parse an ERP date field."""
+	return dt.date.fromisoformat(str(value))
+
+
+def _next_working_day(day: dt.date) -> dt.date:
+	"""Return the first weekday after `day`."""
+	day += dt.timedelta(days=1)
+	while day.weekday() >= 5:
+		day += dt.timedelta(days=1)
+	return day
+
+
+def _working_hours(employee: dict, standard: float) -> float:
+	"""Return the employee's daily working hours, defaulting to HR Settings'."""
+	hours = float(employee.get("custom_working_hours") or 0)
+	if employee.get("custom_work_schedule") == EMPLOYEE_WEEKLY_SCHEDULE:
+		hours /= 5
+	return hours or standard
+
+
+def _picked_up_reason(
+	allocation: dict,
+	others: list[dict],
+	working_hours: float,
+) -> str | None:
+	"""Why no extension is needed: the employee's time after it is already booked."""
+	end = _date(allocation["allocation_end_date"])
+	others = [
+		o
+		for o in others
+		if o["employee"] == allocation["employee"] and o["name"] != allocation["name"]
+	]
+	if any(
+		o["project"] == allocation["project"]
+		and end
+		< _date(o["allocation_start_date"])
+		<= end + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS)
+		for o in others
+	):
+		return "continues in a later allocation"
+
+	day = _next_working_day(end)
+	booked = sum(
+		float(o.get("hours_allocated_per_day") or 0)
+		for o in others
+		if _date(o["allocation_start_date"]) <= day <= _date(o["allocation_end_date"])
 	)
+	if booked >= working_hours:
+		return f"fully booked on {day} ({booked:g}h of {working_hours:g}h)"
+	return None
+
+
+def _skip_reason(
+	allocation: dict,
+	project: dict | None,
+	employee: dict | None,
+	manager: dict | None,
+) -> str | None:
+	"""Why no reporting manager can be reminded about the allocation, or None."""
+	if not project:
+		return "project not found"
+	if project["status"] in PROJECT_SUPPRESSED_STATUSES:
+		return f"project is {project['status']}"
+	if not employee:
+		return "employee not found"
+	if employee["status"] != EMPLOYEE_ACTIVE_STATUS:
+		return f"employee is {employee['status']}"
+	relieving = employee.get("relieving_date")
+	if relieving and _date(relieving) <= _date(allocation["allocation_end_date"]):
+		return f"employee leaves on {relieving}"
+	if not employee.get("reports_to"):
+		return "employee has no reporting manager"
+	if not manager or manager["status"] != EMPLOYEE_ACTIVE_STATUS:
+		return f"reporting manager {employee['reports_to']} isn't active"
+	if not manager.get("user_id"):
+		return f"reporting manager {employee['reports_to']} has no ERP user"
+	return None
+
+
+async def _load_reminders() -> dict:
+	"""Find allocations ending within the lead window and whom to remind.
+
+	Returns:
+		dict: `sent_on` (today, ISO) and `reminders`, each with the
+			allocation `ctx`, the reporting manager's `email` and a `skip`
+			reason (None when sendable).
+
+	"""
+	today = dt.datetime.now(ZoneInfo(ALLOCATION_TIMEZONE)).date()
+	last_end = today + dt.timedelta(days=ALLOCATION_REMINDER_LEAD_DAYS)
+
+	frappe_service = FrappeService()
+	allocations = await frappe_service.get_allocations_ending_between(today, last_end)
+	employee_ids = sorted({a["employee"] for a in allocations})
+	employees = await frappe_service.get_employees(employee_ids)
+	managers = await frappe_service.get_employees(
+		sorted({e["reports_to"] for e in employees.values() if e.get("reports_to")}),
+	)
+	others = await frappe_service.get_allocations_overlapping(
+		today + dt.timedelta(days=1),
+		last_end + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS),
+		employee_ids,
+	)
+	projects = await frappe_service.get_projects(
+		sorted({a["project"] for a in allocations}),
+	)
+	standard_hours = await frappe_service.get_standard_working_hours()
+
+	reminders = []
+	for allocation in allocations:
+		employee = employees.get(allocation["employee"])
+		manager = managers.get(str((employee or {}).get("reports_to")))
+		skip = _skip_reason(
+			allocation,
+			projects.get(allocation["project"]),
+			employee,
+			manager,
+		) or _picked_up_reason(
+			allocation,
+			others,
+			_working_hours(employee or {}, standard_hours),
+		)
+		reminders.append(
+			{
+				"ctx": allocation_context(allocation, today),
+				"email": (manager or {}).get("user_id"),
+				"skip": skip,
+			},
+		)
+	return {"sent_on": today.isoformat(), "reminders": reminders}
+
+
+def _supersede_live_reminder(ctx: dict, sent: dict) -> None:
+	"""Track `sent` as the allocation's live reminder, closing the one it replaces."""
+	previous = redis_client.set(
+		ALLOCATION_LIVE_REMINDER_KEY.format(name=ctx["name"]),
+		json.dumps(sent),
+		ex=ALLOCATION_REMINDED_TTL,
+		get=True,
+	)
+	if not previous:
+		return
+
+	live = json.loads(str(previous))
+	text, blocks = format_reminder_superseded(ctx)
+	# Cosmetic: the old reminder's buttons are already guarded by the
+	# allocation's revision, so a failed update needs no retry.
+	SlackNotifierService().update_message(live["channel"], live["ts"], text, blocks)
 
 
 async def _send_reminder(email: str, ctx: dict) -> dict:
-	"""DM one allocation's reminder to its PM, at most once per end date."""
-	key = ALLOCATION_REMINDED_KEY.format(name=ctx["name"], end_date=ctx["end"])
+	"""DM one allocation's reminder to the reporting manager, at most once a day."""
+	key = ALLOCATION_REMINDED_KEY.format(
+		name=ctx["name"],
+		end_date=ctx["end"],
+		sent_on=ctx["sent_on"],
+	)
 	if not redis_client.set(key, "1", nx=True, ex=ALLOCATION_REMINDED_TTL):
 		return {"status": "already_sent"}
 
 	text, blocks = format_allocation_reminder(ctx)
 	try:
 		sent = await asyncio.to_thread(
-			SlackNotifierService().send_message,
+			SlackNotifierService().send_dm,
 			email,
 			text,
 			blocks,
@@ -79,67 +227,38 @@ async def _send_reminder(email: str, ctx: dict) -> dict:
 		redis_client.delete(key)
 		raise
 
-	if sent:
-		return {"status": "sent"}
+	if not sent:
+		redis_client.delete(key)
+		return {"status": "delivery_failed"}
 
-	redis_client.delete(key)
-	return {"status": "delivery_failed"}
-
-
-def _skip_reason(project: dict | None, roles: dict[str, list[str]]) -> str | None:
-	"""Why an allocation's PM shouldn't be reminded, or None if they should."""
-	if not project:
-		return "project not found"
-	if project["status"] in PROJECT_SUPPRESSED_STATUSES:
-		return f"project is {project['status']}"
-	email = project.get(PROJECT_MANAGER_FIELD)
-	if not email:
-		return "project has no project manager"
-	if not RESOURCE_MANAGER_ROLES.intersection(roles.get(email, [])):
-		return f"{email} has no allocation role in ERP"
-	return None
+	await asyncio.to_thread(_supersede_live_reminder, ctx, sent)
+	return {"status": "sent"}
 
 
-async def _load_reminders() -> dict:
-	"""Find allocations ending in `ALLOCATION_REMINDER_LEAD_DAYS` days and their PMs.
+async def preview_reminders() -> dict:
+	"""List who today's run would remind, and why others are skipped, sending nothing.
 
 	Returns:
-		dict: `ends_on` (ISO date) and `reminders`, each with the allocation
-			`ctx`, the PM `email` and a `skip` reason (None when sendable).
+		dict: `sent_on` (ISO date) and `recipients`, each with the
+			`allocation`, `employee`, `project`, `end`, reporting `manager`
+			and `skip` reason (None when it would be sent).
 
 	"""
-	today = dt.datetime.now(ZoneInfo(ALLOCATION_TIMEZONE)).date()
-	ends_on = today + dt.timedelta(days=ALLOCATION_REMINDER_LEAD_DAYS)
-
-	frappe_service = FrappeService()
-	allocations = await frappe_service.get_allocations_ending_on(ends_on)
-	upcoming = await frappe_service.get_allocations_starting_between(
-		ends_on + dt.timedelta(days=1),
-		ends_on + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS),
-	)
-	allocations = [a for a in allocations if not _is_continued(a, upcoming)]
-
-	projects = await frappe_service.get_projects(
-		sorted({a["project"] for a in allocations}),
-	)
-	emails = {
-		p[PROJECT_MANAGER_FIELD]
-		for p in projects.values()
-		if p.get(PROJECT_MANAGER_FIELD)
-	}
-	roles = {email: await frappe_service.get_user_roles(email) for email in emails}
-
-	reminders = []
-	for allocation in allocations:
-		project = projects.get(allocation["project"])
-		reminders.append(
+	loaded = await _load_reminders()
+	return {
+		"sent_on": loaded["sent_on"],
+		"recipients": [
 			{
-				"ctx": allocation_context(allocation),
-				"email": (project or {}).get(PROJECT_MANAGER_FIELD),
-				"skip": _skip_reason(project, roles),
-			},
-		)
-	return {"ends_on": ends_on.isoformat(), "reminders": reminders}
+				"allocation": r["ctx"]["name"],
+				"employee": r["ctx"]["employee_name"],
+				"project": r["ctx"]["project_name"],
+				"end": r["ctx"]["end"],
+				"manager": r["email"],
+				"skip": r["skip"],
+			}
+			for r in loaded["reminders"]
+		],
+	}
 
 
 @inngest_client.create_function(
@@ -151,57 +270,26 @@ async def _load_reminders() -> dict:
 	retries=1,
 )
 async def send_allocation_reminders(ctx: inngest.Context) -> dict:
-	"""Remind PMs about allocations ending in `ALLOCATION_REMINDER_LEAD_DAYS` days.
+	"""Remind reporting managers about allocations ending within the lead window.
 
-	Only a project's manager who holds an allocation role in ERP is reminded,
-	since only they can act on the reminder.
+	Runs every weekday, so an allocation is reminded about daily until it's
+	extended past the window, removed, or its employee's time after the end
+	date is fully booked elsewhere.
 
 	Args:
-		ctx (inngest.Context): The Inngest context. A manual run's event.data
-			may carry `dry_run` (bool) to list what would be sent without
-			sending anything.
+		ctx (inngest.Context): The Inngest context.
 
 	Returns:
-		dict: `{"total": int, "sent": int, "skipped": int}` summary, plus
-			`recipients` on a dry run.
+		dict: `{"total": int, "sent": int, "skipped": int}` summary.
 
 	"""
-	event_data = ctx.event.data or {}
-	validate(event_data, dict)
-	dry_run = bool(event_data.get("dry_run"))
-
 	loaded = await ctx.step.run("load", _load_reminders)
-	ends_on = loaded["ends_on"]
+	sent_on = loaded["sent_on"]
 	reminders = loaded["reminders"]
 
 	for r in reminders:
 		if r["skip"]:
-			ctx.logger.warning(f"Skipping {r['ctx']['name']}: {r['skip']}")
-
-	if dry_run:
-		recipients = [
-			{
-				"allocation": r["ctx"]["name"],
-				"employee": r["ctx"]["employee_name"],
-				"project": r["ctx"]["project_name"],
-				"pm": r["email"],
-				"skip": r["skip"],
-			}
-			for r in reminders
-		]
-		for r in recipients:
-			ctx.logger.info(
-				f"Dry run ({ends_on}): {r['allocation']} {r['employee']} on "
-				f"{r['project']} -> {r['pm']}"
-				+ (f" (skip: {r['skip']})" if r["skip"] else ""),
-			)
-		return {
-			"total": len(reminders),
-			"sent": 0,
-			"skipped": 0,
-			"dry_run": True,
-			"recipients": recipients,
-		}
+			ctx.logger.info(f"Skipping {r['ctx']['name']}: {r['skip']}")
 
 	sent = 0
 	for r in reminders:
@@ -222,7 +310,7 @@ async def send_allocation_reminders(ctx: inngest.Context) -> dict:
 			sent += 1
 
 	ctx.logger.info(
-		f"Allocation reminders for {ends_on}: {sent} sent, "
+		f"Allocation reminders for {sent_on}: {sent} sent, "
 		f"{len(reminders) - sent} skipped, {len(reminders)} total"
 	)
 	return {
@@ -232,14 +320,18 @@ async def send_allocation_reminders(ctx: inngest.Context) -> dict:
 	}
 
 
-async def _can_extend(frappe_service: FrappeService, email: str, project: str) -> bool:
-	"""Check `email` is the project's PM and holds an allocation write role."""
-	managers = await frappe_service.get_project_managers([project])
-	if (managers.get(project) or "").lower() != email.lower():
+async def _can_extend(frappe_service: FrappeService, email: str, employee: str) -> bool:
+	"""Check `email` belongs to the employee's current, active reporting manager."""
+	employees = await frappe_service.get_employees([employee])
+	manager_id = (employees.get(employee) or {}).get("reports_to")
+	if not manager_id:
 		return False
 
-	roles = await frappe_service.get_user_roles(email)
-	return bool(RESOURCE_MANAGER_ROLES.intersection(roles))
+	manager = (await frappe_service.get_employees([manager_id])).get(manager_id) or {}
+	return (
+		manager.get("status") == EMPLOYEE_ACTIVE_STATUS
+		and (manager.get("user_id") or "").lower() == email.lower()
+	)
 
 
 def _acquire_lock(name: str, run_id: str) -> None:
@@ -294,11 +386,11 @@ async def _apply_extension(run_id: str, user_id: str, ctx: dict, days: int) -> d
 				"Nothing was changed.",
 			}
 
-		if not await _can_extend(frappe_service, email, allocation["project"]):
+		if not await _can_extend(frappe_service, email, allocation["employee"]):
 			return {
 				"status": "forbidden",
-				"message": "🔒 Only this project's manager, with allocation "
-				"access in ERP, can extend this allocation. Nothing was changed.",
+				"message": f"🔒 Only {ctx['employee_name']}'s reporting manager can "
+				"extend this allocation. Nothing was changed.",
 			}
 
 		applied_key = ALLOCATION_APPLIED_KEY.format(
@@ -325,7 +417,8 @@ async def _apply_extension(run_id: str, user_id: str, ctx: dict, days: int) -> d
 				redis_client.delete(applied_key)
 				return {
 					"status": "rejected",
-					"message": f"⚠️ ERP didn't extend the allocation: {exc}",
+					"message": "⚠️ ERP couldn't extend the allocation, so nothing "
+					f"was changed:\n> {exc}",
 				}
 
 			saved = await frappe_service.get_allocation(ctx["name"])
@@ -379,6 +472,28 @@ async def _show_outcome(
 		raise SlackUpdateError(f"Could not update message {message_ts}")
 
 
+async def _close_live_reminder(
+	name: str,
+	message_ts: str,
+	text: str,
+	blocks: list,
+) -> None:
+	"""Show a decision on the allocation's live reminder too, and stop superseding it.
+
+	A modal opened before a newer reminder went out is answered on the older
+	message, which would otherwise leave the newer one's buttons live.
+	"""
+	key = ALLOCATION_LIVE_REMINDER_KEY.format(name=name)
+	raw = redis_client.get(key)
+	if not raw:
+		return
+
+	live = json.loads(str(raw))
+	if live["ts"] != message_ts:
+		await _show_outcome(live["channel"], live["ts"], text, blocks)
+	redis_client.delete(key)
+
+
 @inngest_client.create_function(
 	fn_id="extend_allocation",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/extend_allocation"),
@@ -389,7 +504,7 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
-			- user_id (str): Slack user ID of the PM who submitted the modal.
+			- user_id (str): Slack user ID of the manager who submitted the modal.
 			- allocation (dict): The allocation context from the reminder.
 			- days (int): Calendar days to extend by.
 			- channel_id (str), message_ts (str): The reminder DM, replaced
@@ -441,7 +556,7 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 		outcome = {
 			"status": "rejected",
 			"message": "⚠️ Something went wrong reaching ERP, so the allocation "
-			"may not have been extended. Please try again.",
+			f"may not have been extended. Please try again.\n> {str(exc)[:300]}",
 		}
 
 	if outcome["status"] == "extended":
@@ -472,6 +587,7 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 				ALLOCATION_DECISION_KEY.format(
 					name=allocation["name"],
 					end_date=allocation["end"],
+					sent_on=allocation.get("sent_on"),
 				),
 			)
 		text, blocks = format_reminder_outcome(
@@ -488,20 +604,21 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 		text,
 		blocks,
 	)
+	if outcome["status"] == "extended":
+		try:
+			await ctx.step.run(
+				"close-live",
+				_close_live_reminder,
+				allocation["name"],
+				message_ts,
+				text,
+				blocks,
+			)
+		except Exception as exc:
+			ctx.logger.warning(
+				f"Could not close live reminder for {allocation['name']}: {exc}",
+			)
 	return {"status": outcome["status"]}
-
-
-async def _record_decline(user_id: str, ctx: dict) -> None:
-	"""Comment on the allocation who declined to extend it from Slack."""
-	email = await asyncio.to_thread(SlackNotifierService().get_user_email, user_id)
-	await FrappeService().add_comment(
-		RESOURCE_ALLOCATION_DOCTYPE,
-		ctx["name"],
-		(
-			f"Extension declined from Slack by {email or f'Slack user {user_id}'}: "
-			f"end date stays {ctx['end']}."
-		),
-	)
 
 
 @inngest_client.create_function(
@@ -510,11 +627,13 @@ async def _record_decline(user_id: str, ctx: dict) -> None:
 	retries=2,
 )
 async def decline_allocation(ctx: inngest.Context) -> dict:
-	"""Close a reminder whose PM chose not to extend, and note it in ERP.
+	"""Close a reminder whose reporting manager chose not to extend.
+
+	The allocation is left untouched; the next weekday's reminder asks again.
 
 	Args:
 		ctx (inngest.Context): The Inngest context containing event.data with:
-			- user_id (str): Slack user ID of the PM who clicked No.
+			- user_id (str): Slack user ID of the manager who clicked No.
 			- allocation (dict): The allocation context from the reminder.
 			- channel_id (str), message_ts (str): The reminder DM.
 
@@ -525,26 +644,35 @@ async def decline_allocation(ctx: inngest.Context) -> dict:
 	event_data = ctx.event.data
 	validate(event_data, dict)
 
-	user_id = str(event_data["user_id"])
 	allocation = event_data["allocation"]
 	if not validate(allocation, dict):
 		raise TypeError("Expected dict for 'allocation'")
+	message_ts = str(event_data["message_ts"])
 
 	text, blocks = format_reminder_outcome(
 		allocation,
-		"👍 Okay, the allocation stays unchanged.",
+		"👍 Okay, the allocation stays unchanged for now. You'll be reminded "
+		"again on the next weekday.",
+	)
+	await ctx.step.run(
+		"notify",
+		_show_outcome,
+		str(event_data["channel_id"]),
+		message_ts,
+		text,
+		blocks,
 	)
 	try:
 		await ctx.step.run(
-			"notify",
-			_show_outcome,
-			str(event_data["channel_id"]),
-			str(event_data["message_ts"]),
+			"close-live",
+			_close_live_reminder,
+			allocation["name"],
+			message_ts,
 			text,
 			blocks,
 		)
 	except Exception as exc:
-		# Still record the decline in ERP.
-		ctx.logger.error(f"Could not close reminder for {allocation['name']}: {exc}")
-	await ctx.step.run("record", _record_decline, user_id, allocation)
+		ctx.logger.warning(
+			f"Could not close live reminder for {allocation['name']}: {exc}",
+		)
 	return {"status": "declined"}

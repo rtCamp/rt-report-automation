@@ -13,9 +13,12 @@ from app.core.config import settings
 from app.core.utils import log_and_raise
 from app.frappe.constants import (
 	COMMENT_DOCTYPE,
+	DEFAULT_WORKING_HOURS,
 	DOCSHARE_DOCTYPE,
+	EMPLOYEE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
 	HAS_ROLE_DOCTYPE,
+	HR_SETTINGS_DOCTYPE,
 	NON_BILLABLE_TYPE,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -480,11 +483,16 @@ class FrappeService:
 			["name", "repository_owner", "repository_name"],
 		)
 
-	async def get_allocations_ending_on(self, end_date: dt.date) -> list[dict]:
-		"""Fetch confirmed allocations with a project whose last day is `end_date`.
+	async def get_allocations_ending_between(
+		self,
+		start: dt.date,
+		end: dt.date,
+	) -> list[dict]:
+		"""Fetch confirmed allocations with a project whose last day is in [start, end].
 
 		Args:
-			end_date (dt.date): The allocation end date to match.
+			start (dt.date): Earliest end date, inclusive.
+			end (dt.date): Latest end date, inclusive.
 
 		Returns:
 			list[dict]: Records with `name`, `employee`, `employee_name`,
@@ -495,7 +503,11 @@ class FrappeService:
 		return await self._fetch_list(
 			RESOURCE_ALLOCATION_DOCTYPE,
 			[
-				["allocation_end_date", "=", end_date.isoformat()],
+				[
+					"allocation_end_date",
+					"between",
+					[start.isoformat(), end.isoformat()],
+				],
 				["project", "is", "set"],
 				["status", "=", RESOURCE_ALLOCATION_CONFIRMED_STATUS],
 			],
@@ -511,34 +523,100 @@ class FrappeService:
 			],
 		)
 
-	async def get_allocations_starting_between(
+	async def get_allocations_overlapping(
 		self,
 		start: dt.date,
 		end: dt.date,
+		employees: list[str],
 	) -> list[dict]:
-		"""Fetch confirmed allocations whose first day falls within [start, end].
+		"""Fetch the employees' confirmed allocations overlapping [start, end].
 
 		Args:
-			start (dt.date): Earliest start date, inclusive.
-			end (dt.date): Latest start date, inclusive.
+			start (dt.date): First day of the range, inclusive.
+			end (dt.date): Last day of the range, inclusive.
+			employees (list[str]): Employee `name`s.
 
 		Returns:
-			list[dict]: Records with `name`, `employee`, `project` and
-				`allocation_start_date`.
+			list[dict]: Records with `name`, `employee`, `project`,
+				`allocation_start_date`, `allocation_end_date` and
+				`hours_allocated_per_day`.
 
 		"""
+		if not employees:
+			return []
+
 		return await self._fetch_list(
 			RESOURCE_ALLOCATION_DOCTYPE,
 			[
-				[
-					"allocation_start_date",
-					"between",
-					[start.isoformat(), end.isoformat()],
-				],
+				["employee", "in", employees],
+				["allocation_start_date", "<=", end.isoformat()],
+				["allocation_end_date", ">=", start.isoformat()],
 				["status", "=", RESOURCE_ALLOCATION_CONFIRMED_STATUS],
 			],
-			["name", "employee", "project", "allocation_start_date"],
+			[
+				"name",
+				"employee",
+				"project",
+				"allocation_start_date",
+				"allocation_end_date",
+				"hours_allocated_per_day",
+			],
 		)
+
+	async def get_employees(self, employee_ids: list[str]) -> dict[str, dict]:
+		"""Map each employee ID to its status, reporting manager and working hours.
+
+		Args:
+			employee_ids (list[str]): Employee `name`s.
+
+		Returns:
+			dict[str, dict]: Employee ID -> record with `name`,
+				`employee_name`, `status`, `relieving_date`, `reports_to`,
+				`user_id`, `custom_working_hours` and `custom_work_schedule`,
+				for employees that exist.
+
+		"""
+		if not employee_ids:
+			return {}
+
+		employees = await self._fetch_list(
+			EMPLOYEE_DOCTYPE,
+			[["name", "in", employee_ids]],
+			[
+				"name",
+				"employee_name",
+				"status",
+				"relieving_date",
+				"reports_to",
+				"user_id",
+				"custom_working_hours",
+				"custom_work_schedule",
+			],
+		)
+		return {e["name"]: e for e in employees}
+
+	async def get_standard_working_hours(self) -> float:
+		"""Fetch HR Settings' standard daily working hours."""
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.get(
+					f"{self.base_url}/api/resource/{HR_SETTINGS_DOCTYPE}/"
+					f"{HR_SETTINGS_DOCTYPE}",
+					headers=self.headers,
+				)
+
+			response.raise_for_status()
+			hours = response.json().get("data", {}).get("standard_working_hours")
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching HR Settings from Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
+		return float(hours or 0) or DEFAULT_WORKING_HOURS
 
 	async def get_projects(self, project_ids: list[str]) -> dict[str, dict]:
 		"""Map each project ID to its `name`, `status` and project manager.
@@ -560,23 +638,6 @@ class FrappeService:
 			["name", "status", PROJECT_MANAGER_FIELD],
 		)
 		return {p["name"]: p for p in projects}
-
-	async def get_project_managers(self, project_ids: list[str]) -> dict[str, str]:
-		"""Map each project ID to its project manager's email.
-
-		Args:
-			project_ids (list[str]): Frappe Project `name`s.
-
-		Returns:
-			dict[str, str]: Project ID -> PM email, for projects that have one.
-
-		"""
-		projects = await self.get_projects(project_ids)
-		return {
-			name: p[PROJECT_MANAGER_FIELD]
-			for name, p in projects.items()
-			if p.get(PROJECT_MANAGER_FIELD)
-		}
 
 	async def get_allocation(self, name: str) -> dict | None:
 		"""Fetch a single Resource Allocation document, including its overrides.

@@ -131,13 +131,8 @@ RESOURCE_ALLOCATION_DOCTYPE = "Resource Allocation"
 RESOURCE_ALLOCATION_CONFIRMED_STATUS = "Confirmed"
 COMMENT_DOCTYPE = "Comment"
 
-# Mirrors Next PMS's RESOURCE_MANAGER_ROLES.
-RESOURCE_MANAGER_ROLES = frozenset(
-	{
-		"Projects Manager",
-		"Projects User",
-		"Delivery Manager",
-		"Delivery User",
-		"System Manager",
-	},
-)
+EMPLOYEE_DOCTYPE = "Employee"
+EMPLOYEE_ACTIVE_STATUS = "Active"
+EMPLOYEE_WEEKLY_SCHEDULE = "Per Week"
+HR_SETTINGS_DOCTYPE = "HR Settings"
+DEFAULT_WORKING_HOURS = 8.0

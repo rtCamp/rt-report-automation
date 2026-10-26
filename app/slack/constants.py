@@ -15,18 +15,22 @@ ALLOCATION_DAYS_ACTION_ID = "allocation_extend_days_input"
 ALLOCATION_EXTEND_CALLBACK_ID = "allocation_extend_modal"
 ALLOCATION_VIEW_PROJECT_ACTION_ID = "allocation_view_project"
 
-ALLOCATION_REMINDER_LEAD_DAYS = 7
+# Reminded every weekday from this many days before the end date until the
+# allocation is extended, removed, or the employee is fully booked elsewhere.
+ALLOCATION_REMINDER_LEAD_DAYS = 14
 ALLOCATION_TIMEZONE = "Asia/Kolkata"
-ALLOCATION_REMINDER_CRON = f"TZ={ALLOCATION_TIMEZONE} 0 8 * * *"
+ALLOCATION_REMINDER_CRON = f"TZ={ALLOCATION_TIMEZONE} 0 8 * * 1-5"
 # Next PMS splits weekends-off bookings into weekly allocations, so one followed
 # by another for the same employee and project within this window isn't ending.
 ALLOCATION_CONTINUATION_WINDOW_DAYS = 7
 ALLOCATION_EXTEND_MAX_DAYS = 365
 
-ALLOCATION_REMINDED_KEY = "allocation:reminded:{name}:{end_date}"
+ALLOCATION_REMINDED_KEY = "allocation:reminded:{name}:{end_date}:{sent_on}"
 ALLOCATION_REMINDED_TTL = 86400 * (ALLOCATION_REMINDER_LEAD_DAYS + 1)
 # One decision (extend or decline) per reminder; Yes and No race for it.
-ALLOCATION_DECISION_KEY = "allocation:decision:{name}:{end_date}"
+ALLOCATION_DECISION_KEY = "allocation:decision:{name}:{end_date}:{sent_on}"
+# The allocation's reminder that still has buttons, replaced by the next one.
+ALLOCATION_LIVE_REMINDER_KEY = "allocation:live_reminder:{name}"
 # Which run wrote an extension against a given allocation revision, so a
 # retry of that run can tell its own write from someone else's edit.
 ALLOCATION_APPLIED_KEY = "allocation:extend_applied:{name}:{revision}"
