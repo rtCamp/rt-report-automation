@@ -26,11 +26,18 @@ from app.slack.constants import (
 	PMS_SUBCOMMANDS,
 	PMS_USAGE_TEXT,
 )
-from app.slack.inngest.allocations import preview_reminders
+from app.slack.inngest.allocations import (
+	is_superseded,
+	preview_reminders,
+	set_reminder_open,
+)
 from app.slack.notifier import SlackNotifierService
 from app.slack.utils.allocation_blocks import (
+	SUPERSEDED_MESSAGE,
 	build_changed_modal,
 	build_extend_modal,
+	build_superseded_modal,
+	format_reminder_superseded,
 	parse_extension_days,
 )
 from app.slack.utils.helpers import (
@@ -304,16 +311,35 @@ def _reminder_message(payload: dict) -> tuple[str, str]:
 	return str(container.get("channel_id", "")), str(container.get("message_ts", ""))
 
 
-def _claim_decision(ctx: dict, decision: str) -> str | None:
+def _claim_decision(ctx: dict, message_ts: str, decision: str) -> str | None:
 	"""Record this reminder's decision, returning its key, or None if already made."""
 	key = ALLOCATION_DECISION_KEY.format(
 		name=ctx.get("name"),
 		end_date=ctx.get("end"),
 		sent_on=ctx.get("sent_on"),
 	)
-	if redis_client.set(key, decision, nx=True, ex=ALLOCATION_REMINDED_TTL):
-		return key
-	return None
+	if not redis_client.set(key, decision, nx=True, ex=ALLOCATION_REMINDED_TTL):
+		return None
+	set_reminder_open(str(ctx.get("name")), message_ts, is_open=False)
+	return key
+
+
+def _release_decision(ctx: dict, message_ts: str, key: str) -> None:
+	"""Undo `_claim_decision` so the reminder can be answered again."""
+	redis_client.delete(key)
+	set_reminder_open(str(ctx.get("name")), message_ts, is_open=True)
+
+
+async def _close_superseded(ctx: dict, channel_id: str, message_ts: str) -> None:
+	"""Remove the buttons from a replaced reminder that Slack failed to update."""
+	text, blocks = format_reminder_superseded(ctx)
+	await asyncio.to_thread(
+		SlackNotifierService().update_message,
+		channel_id,
+		message_ts,
+		text,
+		blocks,
+	)
 
 
 async def _decline_extension(payload: dict, action: dict) -> None:
@@ -322,7 +348,11 @@ async def _decline_extension(payload: dict, action: dict) -> None:
 	channel_id, message_ts = _reminder_message(payload)
 	user_id = str((payload.get("user") or {}).get("id", ""))
 
-	decision_key = _claim_decision(ctx, f"decline:{user_id}")
+	if is_superseded(str(ctx.get("name")), message_ts):
+		await _close_superseded(ctx, channel_id, message_ts)
+		return
+
+	decision_key = _claim_decision(ctx, message_ts, f"decline:{user_id}")
 	if not decision_key:
 		# Already extended or declined; that run updates the message.
 		return
@@ -342,7 +372,7 @@ async def _decline_extension(payload: dict, action: dict) -> None:
 	except Exception as e:
 		# The buttons stay, so the manager can click No again.
 		logger.error(f"Error sending decline_allocation event to Inngest: {e}")
-		redis_client.delete(decision_key)
+		_release_decision(ctx, message_ts, decision_key)
 
 
 # Holds the modal re-checks so they aren't garbage-collected mid-flight.
@@ -372,10 +402,20 @@ async def _open_extend_modal(payload: dict, action: dict) -> None:
 	"""Open the duration modal, then re-check the allocation behind it."""
 	ctx = _parse_interaction_payload(action.get("value"))
 	channel_id, message_ts = _reminder_message(payload)
+	trigger_id = str(payload.get("trigger_id", ""))
+	if is_superseded(str(ctx.get("name")), message_ts):
+		await asyncio.to_thread(
+			SlackNotifierService().open_view,
+			trigger_id,
+			build_superseded_modal(),
+		)
+		await _close_superseded(ctx, channel_id, message_ts)
+		return
+
 	ctx |= {"channel_id": channel_id, "message_ts": message_ts}
 	view = await asyncio.to_thread(
 		SlackNotifierService().open_view,
-		str(payload.get("trigger_id", "")),
+		trigger_id,
 		build_extend_modal(ctx),
 	)
 	if not view:
@@ -431,7 +471,10 @@ async def _submit_extension(payload: dict) -> dict:
 			f"Enter a whole number of days from 1 to {ALLOCATION_EXTEND_MAX_DAYS}.",
 		)
 
-	decision_key = _claim_decision(ctx, f"extend:{user_id}")
+	if is_superseded(str(ctx.get("name")), message_ts):
+		return _days_error(SUPERSEDED_MESSAGE)
+
+	decision_key = _claim_decision(ctx, message_ts, f"extend:{user_id}")
 	if not decision_key:
 		return _days_error("This reminder has already been answered.")
 
@@ -452,7 +495,7 @@ async def _submit_extension(payload: dict) -> dict:
 		)
 	except Exception as e:
 		logger.error(f"Error sending extend_allocation event to Inngest: {e}")
-		redis_client.delete(decision_key)
+		_release_decision(ctx, message_ts, decision_key)
 		return _days_error("Couldn't start the extension. Please try again.")
 
 	return {"response_action": "clear"}

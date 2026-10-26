@@ -199,22 +199,53 @@ async def _load_reminders() -> dict:
 	return {"sent_on": today.isoformat(), "reminders": reminders}
 
 
-def _supersede_live_reminder(ctx: dict, sent: dict) -> None:
-	"""Track `sent` as the allocation's live reminder, closing the one it replaces."""
+def _latest_reminder(name: str) -> dict | None:
+	"""Return the allocation's latest reminder: its `channel`, `ts` and `open` flag."""
+	raw = redis_client.get(ALLOCATION_LIVE_REMINDER_KEY.format(name=name))
+	return json.loads(str(raw)) if raw else None
+
+
+def is_superseded(name: str, message_ts: str) -> bool:
+	"""Whether a newer reminder for the allocation replaced the one at `message_ts`.
+
+	Only the latest reminder may act, so a modal left open on an older one, or
+	buttons Slack failed to remove from it, can't race today's decision.
+	"""
+	latest = _latest_reminder(name)
+	return bool(latest) and latest["ts"] != message_ts
+
+
+def set_reminder_open(name: str, message_ts: str, *, is_open: bool) -> None:
+	"""Mark the allocation's latest reminder unanswered or answered.
+
+	An answered reminder keeps its outcome when the next one is sent.
+	"""
+	latest = _latest_reminder(name)
+	if latest and latest["ts"] == message_ts:
+		redis_client.set(
+			ALLOCATION_LIVE_REMINDER_KEY.format(name=name),
+			json.dumps({**latest, "open": is_open}),
+			keepttl=True,
+		)
+
+
+def _supersede_latest_reminder(ctx: dict, sent: dict) -> None:
+	"""Track `sent` as the allocation's latest reminder, closing the previous one."""
 	previous = redis_client.set(
 		ALLOCATION_LIVE_REMINDER_KEY.format(name=ctx["name"]),
-		json.dumps(sent),
+		json.dumps({**sent, "open": True}),
 		ex=ALLOCATION_REMINDED_TTL,
 		get=True,
 	)
 	if not previous:
 		return
 
-	live = json.loads(str(previous))
+	latest = json.loads(str(previous))
+	if not latest.get("open", True):
+		return
 	text, blocks = format_reminder_superseded(ctx)
-	# Cosmetic: the old reminder's buttons are already guarded by the
-	# allocation's revision, so a failed update needs no retry.
-	SlackNotifierService().update_message(live["channel"], live["ts"], text, blocks)
+	# Cosmetic: actions from a replaced reminder are refused regardless.
+	SlackNotifierService().update_message(latest["channel"], latest["ts"], text, blocks)
 
 
 async def _send_reminder(email: str, ctx: dict) -> dict:
@@ -244,7 +275,7 @@ async def _send_reminder(email: str, ctx: dict) -> dict:
 		redis_client.delete(key)
 		return {"status": "delivery_failed"}
 
-	await asyncio.to_thread(_supersede_live_reminder, ctx, sent)
+	await asyncio.to_thread(_supersede_latest_reminder, ctx, sent)
 	return {"status": "sent"}
 
 
@@ -485,28 +516,6 @@ async def _show_outcome(
 		raise SlackUpdateError(f"Could not update message {message_ts}")
 
 
-async def _close_live_reminder(
-	name: str,
-	message_ts: str,
-	text: str,
-	blocks: list,
-) -> None:
-	"""Show a decision on the allocation's live reminder too, and stop superseding it.
-
-	A modal opened before a newer reminder went out is answered on the older
-	message, which would otherwise leave the newer one's buttons live.
-	"""
-	key = ALLOCATION_LIVE_REMINDER_KEY.format(name=name)
-	raw = redis_client.get(key)
-	if not raw:
-		return
-
-	live = json.loads(str(raw))
-	if live["ts"] != message_ts:
-		await _show_outcome(live["channel"], live["ts"], text, blocks)
-	redis_client.delete(key)
-
-
 @inngest_client.create_function(
 	fn_id="extend_allocation",
 	trigger=inngest.TriggerEvent(event="rt-report-automation/extend_allocation"),
@@ -603,6 +612,7 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 					sent_on=allocation.get("sent_on"),
 				),
 			)
+			set_reminder_open(allocation["name"], message_ts, is_open=True)
 		text, blocks = format_reminder_outcome(
 			allocation,
 			outcome["message"],
@@ -617,20 +627,6 @@ async def extend_allocation(ctx: inngest.Context) -> dict:
 		text,
 		blocks,
 	)
-	if outcome["status"] == "extended":
-		try:
-			await ctx.step.run(
-				"close-live",
-				_close_live_reminder,
-				allocation["name"],
-				message_ts,
-				text,
-				blocks,
-			)
-		except Exception as exc:
-			ctx.logger.warning(
-				f"Could not close live reminder for {allocation['name']}: {exc}",
-			)
 	return {"status": outcome["status"]}
 
 
@@ -675,17 +671,4 @@ async def decline_allocation(ctx: inngest.Context) -> dict:
 		text,
 		blocks,
 	)
-	try:
-		await ctx.step.run(
-			"close-live",
-			_close_live_reminder,
-			allocation["name"],
-			message_ts,
-			text,
-			blocks,
-		)
-	except Exception as exc:
-		ctx.logger.warning(
-			f"Could not close live reminder for {allocation['name']}: {exc}",
-		)
 	return {"status": "declined"}

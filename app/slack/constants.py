@@ -29,7 +29,8 @@ ALLOCATION_REMINDED_KEY = "allocation:reminded:{name}:{end_date}:{sent_on}"
 ALLOCATION_REMINDED_TTL = 86400 * (ALLOCATION_REMINDER_LEAD_DAYS + 1)
 # One decision (extend or decline) per reminder; Yes and No race for it.
 ALLOCATION_DECISION_KEY = "allocation:decision:{name}:{end_date}:{sent_on}"
-# The allocation's reminder that still has buttons, replaced by the next one.
+# The allocation's latest reminder: only it can be answered, and the next one
+# replaces it if it's still unanswered.
 ALLOCATION_LIVE_REMINDER_KEY = "allocation:live_reminder:{name}"
 # Which run wrote an extension against a given allocation revision, so a
 # retry of that run can tell its own write from someone else's edit.

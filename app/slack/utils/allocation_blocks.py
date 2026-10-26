@@ -238,6 +238,12 @@ def format_reminder_superseded(ctx: dict) -> tuple[str, list[dict]]:
 	return format_reminder_outcome(ctx, "↪️ Replaced by a newer reminder.")
 
 
+SUPERSEDED_MESSAGE = (
+	"↪️ This reminder was replaced by a newer one. Use the latest reminder for "
+	"this allocation."
+)
+
+
 def format_allocation_changed(
 	ctx: dict,
 	latest: dict,
@@ -324,11 +330,20 @@ def build_extend_modal(ctx: dict, days_raw: str | None = None) -> dict:
 
 def build_changed_modal(ctx: dict, latest: dict | None) -> dict:
 	"""Replace the duration modal when the allocation changed since the reminder."""
-	message = (
+	return _notice_modal(
 		format_allocation_changed(ctx, latest, "it can't be extended from here")
 		if latest
-		else "⚠️ This allocation no longer exists in ERP."
+		else "⚠️ This allocation no longer exists in ERP.",
 	)
+
+
+def build_superseded_modal() -> dict:
+	"""Explain that a newer reminder replaced the one the modal was opened from."""
+	return _notice_modal(SUPERSEDED_MESSAGE)
+
+
+def _notice_modal(message: str) -> dict:
+	"""Build a modal that only shows `message`, with nothing to submit."""
 	return {
 		"type": "modal",
 		"title": {"type": "plain_text", "text": "Extend allocation"},
