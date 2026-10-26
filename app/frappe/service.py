@@ -15,7 +15,6 @@ from app.frappe.constants import (
 	COMMENT_DOCTYPE,
 	DEFAULT_WORKING_HOURS,
 	DOCSHARE_DOCTYPE,
-	EMPLOYEE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
 	HAS_ROLE_DOCTYPE,
 	HR_SETTINGS_DOCTYPE,
@@ -29,6 +28,7 @@ from app.frappe.constants import (
 	RESOURCE_ALLOCATION_CONFIRMED_STATUS,
 	RESOURCE_ALLOCATION_DOCTYPE,
 	RISK_DOCTYPE,
+	STAFF_DOCTYPE,
 	TODO_DOCTYPE,
 	USER_DOCTYPE,
 	USER_ROLES_CACHE_KEY,
@@ -580,7 +580,7 @@ class FrappeService:
 			return {}
 
 		employees = await self._fetch_list(
-			EMPLOYEE_DOCTYPE,
+			STAFF_DOCTYPE,
 			[["name", "in", employee_ids]],
 			[
 				"name",
