@@ -161,18 +161,33 @@ class SlackNotifierService:
 				opened.
 
 		"""
+		return self.send_dm(email, text, blocks) is not None
+
+	def send_dm(
+		self,
+		email: str,
+		text: str,
+		blocks: list[dict] | None = None,
+	) -> dict | None:
+		"""Send a Slack DM like `send_message`, returning where it was posted.
+
+		Returns:
+			dict | None: `{"channel": str, "ts": str}` of the sent message, or
+				None if it couldn't be delivered.
+
+		"""
 		validate(email, str)
 		validate(text, str)
 
 		user_id = self._get_user_id_by_email(email)
 		if not user_id:
 			self.logger.warning(f"No Slack user found for email: {email}")
-			return False
+			return None
 
 		channel_id = self._open_dm_channel(user_id)
 		if not channel_id:
 			self.logger.warning(f"Could not open DM channel for user: {user_id}")
-			return False
+			return None
 
 		try:
 			response = self.client.chat_postMessage(
@@ -183,9 +198,9 @@ class SlackNotifierService:
 
 			if not response["ok"]:
 				self.logger.error(f"Error sending message: {response['error']}")
-				return False
+				return None
 
-			return True
+			return {"channel": channel_id, "ts": str(response["ts"])}
 
 		except Exception as exc:
 			log_and_raise(
@@ -280,6 +295,69 @@ class SlackNotifierService:
 				"Could not delete message %s in %s: %s",
 				ts,
 				channel_id,
+				response["error"],
+			)
+			return False
+
+		return True
+
+	def open_view(self, trigger_id: str, view: dict) -> dict | None:
+		"""Open a modal in response to a user interaction.
+
+		Args:
+			trigger_id (str): From the interaction payload; Slack honours it
+				for 3 seconds only.
+			view (dict): The modal view definition.
+
+		Returns:
+			dict | None: The opened view (with its `id` and `hash`), or None
+				if Slack rejected it.
+
+		"""
+		validate(trigger_id, str)
+
+		try:
+			response = self.client.views_open(trigger_id=trigger_id, view=view)
+		except Exception as exc:
+			self.logger.warning("Could not open modal: %s", exc)
+			return None
+
+		if not response["ok"]:
+			self.logger.warning("Could not open modal: %s", response["error"])
+			return None
+
+		return response["view"]
+
+	def update_view(self, view_id: str, view_hash: str, view: dict) -> bool:
+		"""Replace an open modal's content in place.
+
+		Args:
+			view_id (str): The open modal's ID.
+			view_hash (str): The modal's current hash, so a stale update is
+				rejected rather than overwriting a newer one. Empty to
+				overwrite regardless.
+			view (dict): The new view definition.
+
+		Returns:
+			bool: True if updated, False if Slack rejected it.
+
+		"""
+		validate(view_id, str)
+
+		try:
+			response = self.client.views_update(
+				view_id=view_id,
+				hash=view_hash or None,
+				view=view,
+			)
+		except Exception as exc:
+			self.logger.warning("Could not update modal %s: %s", view_id, exc)
+			return False
+
+		if not response["ok"]:
+			self.logger.warning(
+				"Could not update modal %s: %s",
+				view_id,
 				response["error"],
 			)
 			return False

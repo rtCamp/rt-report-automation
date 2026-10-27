@@ -1,7 +1,9 @@
 """Service for interacting with the Frappe PMS REST API."""
 
+import datetime as dt
 import json
 import logging
+import re
 from typing import cast
 
 import httpx
@@ -10,9 +12,12 @@ from app.core.adapters.redis import redis_client
 from app.core.config import settings
 from app.core.utils import log_and_raise
 from app.frappe.constants import (
+	COMMENT_DOCTYPE,
+	DEFAULT_WORKING_HOURS,
 	DOCSHARE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
 	HAS_ROLE_DOCTYPE,
+	HR_SETTINGS_DOCTYPE,
 	NON_BILLABLE_TYPE,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -20,12 +25,41 @@ from app.frappe.constants import (
 	PROJECT_MANAGER_FIELD,
 	PROJECT_SUPPRESSED_STATUSES,
 	PROJECT_TIMELINE_ITEM_DOCTYPE,
+	RESOURCE_ALLOCATION_CONFIRMED_STATUS,
+	RESOURCE_ALLOCATION_DOCTYPE,
 	RISK_DOCTYPE,
+	STAFF_DOCTYPE,
 	TODO_DOCTYPE,
 	USER_DOCTYPE,
 	USER_ROLES_CACHE_KEY,
 	USER_ROLES_CACHE_TTL,
 )
+
+
+class FrappeValidationError(Exception):
+	"""Frappe rejected a write (4xx), carrying its user-facing message."""
+
+
+def _frappe_error_message(response: httpx.Response) -> str:
+	"""Extract the human-readable message from a Frappe error response."""
+	try:
+		body = response.json()
+	except ValueError:
+		text = re.sub(r"<[^>]+>", " ", response.text)
+		return " ".join(text.split())[:300] or f"HTTP {response.status_code}"
+
+	messages = []
+	try:
+		for raw in json.loads(body.get("_server_messages") or "[]"):
+			message = json.loads(raw).get("message") if raw.startswith("{") else raw
+			if message:
+				messages.append(str(message))
+	except (TypeError, ValueError, AttributeError):
+		pass
+
+	fallback = body.get("exception") or body.get("exc_type") or ""
+	text = " ".join(messages) or str(fallback)
+	return re.sub(r"<[^>]+>", "", text).strip() or f"HTTP {response.status_code}"
 
 
 class FrappeService:
@@ -448,3 +482,273 @@ class FrappeService:
 			[["name", "in", names]],
 			["name", "repository_owner", "repository_name"],
 		)
+
+	async def get_allocations_ending_between(
+		self,
+		start: dt.date,
+		end: dt.date,
+	) -> list[dict]:
+		"""Fetch confirmed allocations with a project whose last day is in [start, end].
+
+		Args:
+			start (dt.date): Earliest end date, inclusive.
+			end (dt.date): Latest end date, inclusive.
+
+		Returns:
+			list[dict]: Records with `name`, `employee`, `employee_name`,
+				`project`, `project_name`, `allocation_end_date`,
+				`hours_allocated_per_day` and `modified`.
+
+		"""
+		return await self._fetch_list(
+			RESOURCE_ALLOCATION_DOCTYPE,
+			[
+				[
+					"allocation_end_date",
+					"between",
+					[start.isoformat(), end.isoformat()],
+				],
+				["project", "is", "set"],
+				["status", "=", RESOURCE_ALLOCATION_CONFIRMED_STATUS],
+			],
+			[
+				"name",
+				"employee",
+				"employee_name",
+				"project",
+				"project_name",
+				"allocation_end_date",
+				"hours_allocated_per_day",
+				"modified",
+			],
+		)
+
+	async def get_allocations_overlapping(
+		self,
+		start: dt.date,
+		end: dt.date,
+		employees: list[str],
+	) -> list[dict]:
+		"""Fetch the employees' confirmed allocations overlapping [start, end].
+
+		Args:
+			start (dt.date): First day of the range, inclusive.
+			end (dt.date): Last day of the range, inclusive.
+			employees (list[str]): Employee `name`s.
+
+		Returns:
+			list[dict]: Records with `name`, `employee`, `project`,
+				`allocation_start_date`, `allocation_end_date` and
+				`hours_allocated_per_day`.
+
+		"""
+		if not employees:
+			return []
+
+		return await self._fetch_list(
+			RESOURCE_ALLOCATION_DOCTYPE,
+			[
+				["employee", "in", employees],
+				["allocation_start_date", "<=", end.isoformat()],
+				["allocation_end_date", ">=", start.isoformat()],
+				["status", "=", RESOURCE_ALLOCATION_CONFIRMED_STATUS],
+			],
+			[
+				"name",
+				"employee",
+				"project",
+				"allocation_start_date",
+				"allocation_end_date",
+				"hours_allocated_per_day",
+			],
+		)
+
+	async def get_employees(self, employee_ids: list[str]) -> dict[str, dict]:
+		"""Map each employee ID to its status, reporting manager and working hours.
+
+		Args:
+			employee_ids (list[str]): Employee `name`s.
+
+		Returns:
+			dict[str, dict]: Employee ID -> record with `name`,
+				`employee_name`, `status`, `relieving_date`, `reports_to`,
+				`user_id`, `custom_working_hours` and `custom_work_schedule`,
+				for employees that exist.
+
+		"""
+		if not employee_ids:
+			return {}
+
+		employees = await self._fetch_list(
+			STAFF_DOCTYPE,
+			[["name", "in", employee_ids]],
+			[
+				"name",
+				"employee_name",
+				"status",
+				"relieving_date",
+				"reports_to",
+				"user_id",
+				"custom_working_hours",
+				"custom_work_schedule",
+			],
+		)
+		return {e["name"]: e for e in employees}
+
+	async def get_standard_working_hours(self) -> float:
+		"""Fetch HR Settings' standard daily working hours."""
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.get(
+					f"{self.base_url}/api/resource/{HR_SETTINGS_DOCTYPE}/"
+					f"{HR_SETTINGS_DOCTYPE}",
+					headers=self.headers,
+				)
+
+			response.raise_for_status()
+			hours = response.json().get("data", {}).get("standard_working_hours")
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching HR Settings from Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
+		return float(hours or 0) or DEFAULT_WORKING_HOURS
+
+	async def get_projects(self, project_ids: list[str]) -> dict[str, dict]:
+		"""Map each project ID to its `name`, `status` and project manager.
+
+		Args:
+			project_ids (list[str]): Frappe Project `name`s.
+
+		Returns:
+			dict[str, dict]: Project ID -> record with `name`, `status` and
+				`PROJECT_MANAGER_FIELD`, for projects that exist.
+
+		"""
+		if not project_ids:
+			return {}
+
+		projects = await self._fetch_list(
+			PROJECT_DOCTYPE,
+			[["name", "in", project_ids]],
+			["name", "status", PROJECT_MANAGER_FIELD],
+		)
+		return {p["name"]: p for p in projects}
+
+	async def get_allocation(self, name: str) -> dict | None:
+		"""Fetch a single Resource Allocation document, including its overrides.
+
+		Args:
+			name (str): The allocation `name` (e.g. "RA-EMP-00455-2026-0003").
+
+		Returns:
+			dict | None: The allocation document, or None if it doesn't exist.
+
+		"""
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.get(
+					f"{self.base_url}/api/resource/{RESOURCE_ALLOCATION_DOCTYPE}/{name}",
+					headers=self.headers,
+				)
+
+			if response.status_code == httpx.codes.NOT_FOUND:
+				return None
+
+			response.raise_for_status()
+			return response.json().get("data")
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while fetching allocation from Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
+	async def extend_allocation(self, allocation: dict, new_end: dt.date) -> None:
+		"""Move an existing allocation's end date, keeping every other field.
+
+		Updates the document in place, so ERP's own validation (overlap, leave
+		and holidays, totals, cost) runs. Next PMS's `edit_allocation` is
+		avoided: on preprod it splits weekends-off ranges into new weekly
+		allocations instead of extending this one.
+
+		Args:
+			allocation (dict): The current allocation document, as returned
+				by `get_allocation`.
+			new_end (dt.date): The new allocation end date.
+
+		Raises:
+			FrappeValidationError: If Frappe rejects the change (overlap,
+				permission, or the allocation changed since it was read).
+
+		"""
+		try:
+			async with httpx.AsyncClient(timeout=60) as client:
+				response = await client.put(
+					f"{self.base_url}/api/resource/{RESOURCE_ALLOCATION_DOCTYPE}/"
+					f"{allocation['name']}",
+					headers=self.headers,
+					json={
+						# Both dates as strings: validate() compares them.
+						"allocation_start_date": allocation["allocation_start_date"],
+						"allocation_end_date": new_end.isoformat(),
+						# Rejected by Frappe if the allocation changed since read.
+						"modified": allocation["modified"],
+					},
+				)
+
+			if not response.is_client_error:
+				response.raise_for_status()
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while extending allocation in Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)
+
+		if response.is_client_error:
+			log_and_raise(
+				self.logger,
+				_frappe_error_message(response),
+				exception_type=FrappeValidationError,
+			)
+
+	async def add_comment(self, doctype: str, name: str, content: str) -> None:
+		"""Add a comment to a document's timeline.
+
+		Args:
+			doctype (str): The document's doctype.
+			name (str): The document's `name`.
+			content (str): Comment text.
+
+		"""
+		try:
+			async with httpx.AsyncClient() as client:
+				response = await client.post(
+					f"{self.base_url}/api/resource/{COMMENT_DOCTYPE}",
+					headers=self.headers,
+					json={
+						"comment_type": "Comment",
+						"reference_doctype": doctype,
+						"reference_name": name,
+						"content": content,
+					},
+				)
+
+			response.raise_for_status()
+
+		except Exception as exc:
+			log_and_raise(
+				self.logger,
+				"Exception occurred while adding comment in Frappe",
+				exception_type=exc.__class__,
+				cause=exc,
+			)

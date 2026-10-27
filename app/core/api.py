@@ -8,7 +8,7 @@ from app.google_docs.controller import router as google_docs_router
 from app.health.controller import router as health_router
 from app.inngest_proxy import inngest_proxy_router
 from app.llm import llm_router
-from app.slack import audit_router, slack_router
+from app.slack import allocation_router, audit_router, slack_router
 
 
 def register_routes(app: FastAPI):
@@ -52,6 +52,11 @@ def register_routes(app: FastAPI):
 	)
 	app.include_router(
 		audit_router,
+		prefix=settings.API_PREFIX,
+		dependencies=[Depends(validate_api_key)],
+	)
+	app.include_router(
+		allocation_router,
 		prefix=settings.API_PREFIX,
 		dependencies=[Depends(validate_api_key)],
 	)

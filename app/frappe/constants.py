@@ -126,3 +126,13 @@ RISK_MITIGATED_STATUS = "Mitigated"
 RISK_BLOCKED_STATUS = "Blocked"
 # Lower sorts first: escalate High-risk items to the top of the open-risk list.
 RISK_LEVEL_ORDER = {"High": 0, "Medium": 1, "Low": 2}
+
+RESOURCE_ALLOCATION_DOCTYPE = "Resource Allocation"
+RESOURCE_ALLOCATION_CONFIRMED_STATUS = "Confirmed"
+COMMENT_DOCTYPE = "Comment"
+
+STAFF_DOCTYPE = "Employee"
+EMPLOYEE_ACTIVE_STATUS = "Active"
+EMPLOYEE_WEEKLY_SCHEDULE = "Per Week"
+HR_SETTINGS_DOCTYPE = "HR Settings"
+DEFAULT_WORKING_HOURS = 8.0

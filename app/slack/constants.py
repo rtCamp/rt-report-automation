@@ -8,6 +8,40 @@ SLACK_API_RATE_LIMIT = 2
 # handler can tell this menu apart from any future one.
 AUDIT_PROJECT_SELECT_ACTION_ID = "audit_project_select"
 
+ALLOCATION_EXTEND_ACTION_ID = "allocation_extend"
+ALLOCATION_DECLINE_ACTION_ID = "allocation_decline"
+ALLOCATION_DAYS_BLOCK_ID = "allocation_extend_days"
+ALLOCATION_DAYS_ACTION_ID = "allocation_extend_days_input"
+ALLOCATION_EXTEND_CALLBACK_ID = "allocation_extend_modal"
+ALLOCATION_VIEW_PROJECT_ACTION_ID = "allocation_view_project"
+
+# Reminded every weekday from this many days before the end date until the
+# allocation is extended, removed, or the employee is fully booked elsewhere.
+ALLOCATION_REMINDER_LEAD_DAYS = 14
+ALLOCATION_TIMEZONE = "Asia/Kolkata"
+ALLOCATION_REMINDER_CRON = f"TZ={ALLOCATION_TIMEZONE} 0 8 * * 1-5"
+# Next PMS splits weekends-off bookings into weekly allocations, so one followed
+# by another for the same employee and project within this window isn't ending.
+ALLOCATION_CONTINUATION_WINDOW_DAYS = 7
+ALLOCATION_EXTEND_MAX_DAYS = 365
+
+ALLOCATION_REMINDED_KEY = "allocation:reminded:{name}:{end_date}:{sent_on}"
+ALLOCATION_REMINDED_TTL = 86400 * (ALLOCATION_REMINDER_LEAD_DAYS + 1)
+# One decision (extend or decline) per reminder; Yes and No race for it.
+ALLOCATION_DECISION_KEY = "allocation:decision:{name}:{end_date}:{sent_on}"
+# The allocation's latest reminder: only it can be answered, and the next one
+# replaces it if it's still unanswered.
+ALLOCATION_LIVE_REMINDER_KEY = "allocation:live_reminder:{name}"
+# Set while a submitted extension is queued or running, so no newer actionable
+# reminder (or No) can contradict it. Expires in case the run never settles.
+ALLOCATION_EXTENDING_KEY = "allocation:extending:{name}"
+ALLOCATION_EXTENDING_TTL = 900
+# Which run wrote an extension against a given allocation revision, so a
+# retry of that run can tell its own write from someone else's edit.
+ALLOCATION_APPLIED_KEY = "allocation:extend_applied:{name}:{revision}"
+ALLOCATION_EXTEND_LOCK_KEY = "allocation:extend_lock:{name}"
+ALLOCATION_EXTEND_LOCK_TTL = 300
+
 # Slack rejects the whole Block Kit payload if either is exceeded.
 SLACK_OPTION_TEXT_LIMIT = 75
 SLACK_MAX_SELECT_OPTIONS = 100
