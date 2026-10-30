@@ -59,12 +59,12 @@ def _date(value: object) -> dt.date:
 	return dt.date.fromisoformat(str(value))
 
 
-def _first_working_day(end: dt.date, days_off: set[dt.date]) -> dt.date | None:
-	"""Return the first weekday after `end` that isn't a day off, within the window."""
+def _first_working_day(end: dt.date, days_off: dict[dt.date, float]) -> dt.date | None:
+	"""Return the first weekday after `end` that isn't fully off, within the window."""
 	last = end + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS)
 	day = end + dt.timedelta(days=1)
 	while day <= last:
-		if day.weekday() < 5 and day not in days_off:
+		if day.weekday() < 5 and days_off.get(day, 0) < 1:
 			return day
 		day += dt.timedelta(days=1)
 	return None
@@ -74,24 +74,24 @@ def _days_off(
 	employees: dict[str, dict],
 	leaves: list[dict],
 	holidays: list[dict],
-) -> dict[str, set[dt.date]]:
-	"""Map each employee to their holidays and full days of leave."""
+) -> dict[str, dict[dt.date, float]]:
+	"""Map each employee to the share of each day they're off: 1 or 0.5 (half day)."""
 	by_list: dict[str, set[dt.date]] = {}
 	for h in holidays:
 		by_list.setdefault(h["parent"], set()).add(_date(h["holiday_date"]))
 
 	days_off = {
-		name: set(by_list.get(e.get("holiday_list") or "", ()))
+		name: dict.fromkeys(by_list.get(e.get("holiday_list") or "", ()), 1.0)
 		for name, e in employees.items()
 	}
 	for leave in leaves:
 		half_day = None
 		if leave.get("half_day"):
 			half_day = _date(leave.get("half_day_date") or leave["from_date"])
+		off = days_off.setdefault(leave["employee"], {})
 		day, last = _date(leave["from_date"]), _date(leave["to_date"])
 		while day <= last:
-			if day != half_day:
-				days_off.setdefault(leave["employee"], set()).add(day)
+			off[day] = max(off.get(day, 0), 0.5 if day == half_day else 1.0)
 			day += dt.timedelta(days=1)
 	return days_off
 
@@ -108,7 +108,7 @@ def _picked_up_reason(
 	allocation: dict,
 	others: list[dict],
 	working_hours: float,
-	days_off: set[dt.date],
+	days_off: dict[dt.date, float],
 ) -> str | None:
 	"""Why no extension is needed: the employee's time after it is booked or off."""
 	end = _date(allocation["allocation_end_date"])
@@ -134,8 +134,9 @@ def _picked_up_reason(
 		for o in others
 		if _date(o["allocation_start_date"]) <= day <= _date(o["allocation_end_date"])
 	)
-	if booked >= working_hours:
-		return f"fully booked on {day} ({booked:g}h of {working_hours:g}h)"
+	needed = working_hours * (1 - days_off.get(day, 0))
+	if booked >= needed:
+		return f"fully booked on {day} ({booked:g}h of {needed:g}h)"
 	return None
 
 
@@ -240,7 +241,7 @@ async def _load_reminders() -> dict:
 			allocation,
 			others,
 			_working_hours(employee or {}, standard_hours),
-			days_off.get(allocation["employee"], set()),
+			days_off.get(allocation["employee"], {}),
 		)
 		reminders.append(
 			{
