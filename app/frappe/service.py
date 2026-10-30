@@ -17,7 +17,11 @@ from app.frappe.constants import (
 	DOCSHARE_DOCTYPE,
 	GITHUB_REPOSITORY_DOCTYPE,
 	HAS_ROLE_DOCTYPE,
+	HOLIDAY_DOCTYPE,
+	HOLIDAY_LIST_DOCTYPE,
 	HR_SETTINGS_DOCTYPE,
+	LEAVE_APPLICATION_DOCTYPE,
+	LEAVE_COUNTED_STATUSES,
 	NON_BILLABLE_TYPE,
 	PROJECT_BILLING_TYPE_FIELD,
 	PROJECT_DETAIL_FIELDS,
@@ -210,6 +214,7 @@ class FrappeService:
 		doctype: str,
 		filters: list,
 		fields: list[str],
+		parent: str | None = None,
 	) -> list[dict]:
 		"""Fetch a filtered, field-limited list of records for a doctype.
 
@@ -218,6 +223,8 @@ class FrappeService:
 			filters (list): Frappe list-view style filters, e.g.
 				``[["project", "=", "PROJ-0001"]]``.
 			fields (list[str]): Fieldnames to return for each record.
+			parent (str | None): The parent doctype, required when `doctype`
+				is a child table.
 
 		Returns:
 			list[dict]: Matching records. Empty only if none match -- a
@@ -230,6 +237,8 @@ class FrappeService:
 			"fields": json.dumps(fields),
 			"limit_page_length": 0,
 		}
+		if parent:
+			params["parent"] = parent
 
 		try:
 			async with httpx.AsyncClient() as client:
@@ -572,8 +581,8 @@ class FrappeService:
 		Returns:
 			dict[str, dict]: Employee ID -> record with `name`,
 				`employee_name`, `status`, `relieving_date`, `reports_to`,
-				`user_id`, `custom_working_hours` and `custom_work_schedule`,
-				for employees that exist.
+				`user_id`, `holiday_list`, `custom_working_hours` and
+				`custom_work_schedule`, for employees that exist.
 
 		"""
 		if not employee_ids:
@@ -589,11 +598,66 @@ class FrappeService:
 				"relieving_date",
 				"reports_to",
 				"user_id",
+				"holiday_list",
 				"custom_working_hours",
 				"custom_work_schedule",
 			],
 		)
 		return {e["name"]: e for e in employees}
+
+	async def get_leaves_overlapping(
+		self,
+		start: dt.date,
+		end: dt.date,
+		employees: list[str],
+	) -> list[dict]:
+		"""Fetch the employees' open or approved leave overlapping [start, end].
+
+		Returns:
+			list[dict]: Records with `employee`, `from_date`, `to_date`,
+				`half_day` and `half_day_date`.
+
+		"""
+		if not employees:
+			return []
+
+		return await self._fetch_list(
+			LEAVE_APPLICATION_DOCTYPE,
+			[
+				["employee", "in", employees],
+				["status", "in", LEAVE_COUNTED_STATUSES],
+				["docstatus", "<", 2],
+				["from_date", "<=", end.isoformat()],
+				["to_date", ">=", start.isoformat()],
+			],
+			["employee", "from_date", "to_date", "half_day", "half_day_date"],
+		)
+
+	async def get_holidays_between(
+		self,
+		start: dt.date,
+		end: dt.date,
+		holiday_lists: list[str],
+	) -> list[dict]:
+		"""Fetch the holiday lists' days, weekly offs included, in [start, end].
+
+		Returns:
+			list[dict]: Records with `parent` (the holiday list) and
+				`holiday_date`.
+
+		"""
+		if not holiday_lists:
+			return []
+
+		return await self._fetch_list(
+			HOLIDAY_DOCTYPE,
+			[
+				["parent", "in", holiday_lists],
+				["holiday_date", "between", [start.isoformat(), end.isoformat()]],
+			],
+			["parent", "holiday_date"],
+			parent=HOLIDAY_LIST_DOCTYPE,
+		)
 
 	async def get_standard_working_hours(self) -> float:
 		"""Fetch HR Settings' standard daily working hours."""

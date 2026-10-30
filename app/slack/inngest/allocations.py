@@ -59,12 +59,41 @@ def _date(value: object) -> dt.date:
 	return dt.date.fromisoformat(str(value))
 
 
-def _next_working_day(day: dt.date) -> dt.date:
-	"""Return the first weekday after `day`."""
-	day += dt.timedelta(days=1)
-	while day.weekday() >= 5:
+def _first_working_day(end: dt.date, days_off: set[dt.date]) -> dt.date | None:
+	"""Return the first weekday after `end` that isn't a day off, within the window."""
+	last = end + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS)
+	day = end + dt.timedelta(days=1)
+	while day <= last:
+		if day.weekday() < 5 and day not in days_off:
+			return day
 		day += dt.timedelta(days=1)
-	return day
+	return None
+
+
+def _days_off(
+	employees: dict[str, dict],
+	leaves: list[dict],
+	holidays: list[dict],
+) -> dict[str, set[dt.date]]:
+	"""Map each employee to their holidays and full days of leave."""
+	by_list: dict[str, set[dt.date]] = {}
+	for h in holidays:
+		by_list.setdefault(h["parent"], set()).add(_date(h["holiday_date"]))
+
+	days_off = {
+		name: set(by_list.get(e.get("holiday_list") or "", ()))
+		for name, e in employees.items()
+	}
+	for leave in leaves:
+		half_day = None
+		if leave.get("half_day"):
+			half_day = _date(leave.get("half_day_date") or leave["from_date"])
+		day, last = _date(leave["from_date"]), _date(leave["to_date"])
+		while day <= last:
+			if day != half_day:
+				days_off.setdefault(leave["employee"], set()).add(day)
+			day += dt.timedelta(days=1)
+	return days_off
 
 
 def _working_hours(employee: dict, standard: float) -> float:
@@ -79,8 +108,9 @@ def _picked_up_reason(
 	allocation: dict,
 	others: list[dict],
 	working_hours: float,
+	days_off: set[dt.date],
 ) -> str | None:
-	"""Why no extension is needed: the employee's time after it is already booked."""
+	"""Why no extension is needed: the employee's time after it is booked or off."""
 	end = _date(allocation["allocation_end_date"])
 	others = [
 		o
@@ -96,7 +126,9 @@ def _picked_up_reason(
 	):
 		return "continues in a later allocation"
 
-	day = _next_working_day(end)
+	day = _first_working_day(end, days_off)
+	if not day:
+		return f"off for the {ALLOCATION_CONTINUATION_WINDOW_DAYS} days after it ends"
 	booked = sum(
 		float(o.get("hours_allocated_per_day") or 0)
 		for o in others
@@ -165,15 +197,35 @@ async def _load_reminders() -> dict:
 	managers = await frappe_service.get_employees(
 		sorted({e["reports_to"] for e in employees.values() if e.get("reports_to")}),
 	)
+	after_start = today + dt.timedelta(days=1)
+	after_end = last_end + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS)
 	others = await frappe_service.get_allocations_overlapping(
-		today + dt.timedelta(days=1),
-		last_end + dt.timedelta(days=ALLOCATION_CONTINUATION_WINDOW_DAYS),
+		after_start,
+		after_end,
 		employee_ids,
 	)
 	projects = await frappe_service.get_projects(
 		sorted({a["project"] for a in allocations}),
 	)
 	standard_hours = await frappe_service.get_standard_working_hours()
+	try:
+		leaves = await frappe_service.get_leaves_overlapping(
+			after_start,
+			after_end,
+			employee_ids,
+		)
+		holidays = await frappe_service.get_holidays_between(
+			after_start,
+			after_end,
+			sorted(
+				{e["holiday_list"] for e in employees.values() if e.get("holiday_list")}
+			),
+		)
+	except Exception as exc:
+		# Without them every weekday counts as working: noisier, never silent.
+		logger.warning(f"Could not read leave or holidays, ignoring them: {exc}")
+		leaves, holidays = [], []
+	days_off = _days_off(employees, leaves, holidays)
 
 	reminders = []
 	for allocation in allocations:
@@ -188,6 +240,7 @@ async def _load_reminders() -> dict:
 			allocation,
 			others,
 			_working_hours(employee or {}, standard_hours),
+			days_off.get(allocation["employee"], set()),
 		)
 		reminders.append(
 			{

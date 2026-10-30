@@ -136,3 +136,10 @@ EMPLOYEE_ACTIVE_STATUS = "Active"
 EMPLOYEE_WEEKLY_SCHEDULE = "Per Week"
 HR_SETTINGS_DOCTYPE = "HR Settings"
 DEFAULT_WORKING_HOURS = 8.0
+
+# Open leave counts too: it's planned time off, and a rejection brings the
+# reminder back on the next run.
+LEAVE_APPLICATION_DOCTYPE = "Leave Application"
+LEAVE_COUNTED_STATUSES = ["Open", "Approved"]
+HOLIDAY_LIST_DOCTYPE = "Holiday List"
+HOLIDAY_DOCTYPE = "Holiday"
