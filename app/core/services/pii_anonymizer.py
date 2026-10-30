@@ -14,6 +14,17 @@ from app.core.utils import log_and_raise, validate
 _SPACY_MODEL = "en_core_web_lg"
 _logger = logging.getLogger(__name__)
 
+# Matches a GitHub Project single-select field's value line immediately
+# followed by its `field: name: <FieldName>` descriptor (e.g. Status,
+# Priority) in TOON-encoded output. These are structured taxonomy values
+# (not natural-language text), so NER false-positives here (e.g. a status
+# like "Internal Review" being tagged as an ORGANIZATION) would corrupt
+# categorization signal that downstream prompts rely on. Matched generically
+# by shape, not by hardcoding known status/field names.
+_PROJECT_FIELD_VALUE_PATTERN = re.compile(
+	r"(-\s*name:\s*)(.+)(\n[ \t]*field:\n[ \t]*name:\s*\S)",
+)
+
 _analyzer: AnalyzerEngine | None = None
 _anonymizer: AnonymizerEngine | None = None
 _init_lock = threading.Lock()
@@ -100,6 +111,35 @@ class PIIAnonymizer:
 		self._reverse_lookup: dict[str, str] = {}
 		self._counters: dict[str, int] = {}
 
+	@staticmethod
+	def _mask_project_field_values(text: str) -> tuple[str, dict[str, str]]:
+		"""Replace GitHub Project single-select field values with sentinel tokens.
+
+		Args:
+			text: Input text that may contain TOON-encoded project field values.
+
+		Returns:
+			Tuple of the masked text and a token-to-original-value mapping to
+			restore after PII analysis/anonymization has run.
+
+		"""
+		protected: dict[str, str] = {}
+
+		def _replace(match: re.Match) -> str:
+			token = f"\x00PFV{len(protected)}\x00"
+			protected[token] = match.group(2)
+			return f"{match.group(1)}{token}{match.group(3)}"
+
+		masked = _PROJECT_FIELD_VALUE_PATTERN.sub(_replace, text)
+		return masked, protected
+
+	@staticmethod
+	def _unmask_project_field_values(text: str, protected: dict[str, str]) -> str:
+		"""Restore sentinel tokens inserted by ``_mask_project_field_values``."""
+		for token, original in protected.items():
+			text = text.replace(token, original)
+		return text
+
 	@property
 	def mapping(self) -> dict[str, str]:
 		"""Return a copy of the current placeholder-to-original mapping."""
@@ -133,8 +173,10 @@ class PIIAnonymizer:
 			)
 			return text
 
+		masked_text, protected = self._mask_project_field_values(text)
+
 		try:
-			results = analyzer.analyze(text=text, language="en")
+			results = analyzer.analyze(text=masked_text, language="en")
 		except Exception as e:
 			_logger.warning("PII analyzer failed: %s; returning text unchanged", e)
 			return text
@@ -144,7 +186,7 @@ class PIIAnonymizer:
 
 		try:
 			anonymized = anonymizer.anonymize(
-				text=text,
+				text=masked_text,
 				analyzer_results=cast("Any", results),
 			)
 		except Exception as e:
@@ -167,7 +209,7 @@ class PIIAnonymizer:
 			)
 			return text
 
-		return sanitized_text
+		return self._unmask_project_field_values(sanitized_text, protected)
 
 	def anonymize_with_mapping(self, text: str) -> str:
 		"""Anonymize PII with unique numbered placeholders for reversibility.
@@ -205,8 +247,10 @@ class PIIAnonymizer:
 			)
 			return text
 
+		masked_text, protected = self._mask_project_field_values(text)
+
 		try:
-			results = analyzer.analyze(text=text, language="en")
+			results = analyzer.analyze(text=masked_text, language="en")
 		except Exception as e:
 			_logger.warning("PII analyzer failed: %s; returning text unchanged", e)
 			return text
@@ -218,7 +262,7 @@ class PIIAnonymizer:
 		sorted_results = sorted(results, key=lambda r: r.start, reverse=True)
 
 		for result in sorted_results:
-			original = text[result.start : result.end]
+			original = masked_text[result.start : result.end]
 
 			if original in self._reverse_lookup:
 				placeholder = self._reverse_lookup[original]
@@ -229,9 +273,11 @@ class PIIAnonymizer:
 				self._reverse_lookup[original] = placeholder
 				self._mapping[placeholder] = original
 
-			text = text[: result.start] + placeholder + text[result.end :]
+			masked_text = (
+				masked_text[: result.start] + placeholder + masked_text[result.end :]
+			)
 
-		return text
+		return self._unmask_project_field_values(masked_text, protected)
 
 	@staticmethod
 	def deanonymize(
